@@ -82,12 +82,23 @@ export function useInstanceManager() {
 
         if (msg.payload.status === 'running' || msg.payload.status === 'pending') {
           setInstances(prev =>
-            prev.map(inst =>
-              inst.id === msg.instanceId
-                ? { ...inst, currentTask: { ...inst.currentTask, ...msg.payload }, status: 'busy' }
-                : inst
-            )
+            prev.map(inst => {
+              if (inst.id !== msg.instanceId) return inst;
+              const isNewTask = !inst.currentTask || inst.currentTask.id !== msg.payload.id;
+              return {
+                ...inst,
+                currentTask: isNewTask ? msg.payload : { ...inst.currentTask, ...msg.payload },
+                status: 'busy',
+              };
+            })
           );
+          if (msg.instanceId) {
+            setTaskStreams(prev => {
+              const next = { ...prev };
+              delete next[msg.instanceId!];
+              return next;
+            });
+          }
         }
         break;
       }

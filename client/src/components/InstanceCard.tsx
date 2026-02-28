@@ -53,7 +53,7 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
     if (!instance.currentTask?.id) return null;
     const result = getExchangeById(instance.currentTask.id);
     return result?.session || null;
-  }, [instance.currentTask?.id]);
+  }, [instance.currentTask?.id, instance.currentTask?.status]);
 
   return (
     <>
