@@ -43,7 +43,7 @@ instanceRouter.delete('/:id', async (req, res) => {
 
   if (instance.sandboxId) {
     try {
-      await killSandbox(instance.sandboxId);
+      await killSandbox(instance.sandboxId, instance.apiKey);
     } catch (err) {
       console.warn(`[sandbox] Failed to kill sandbox ${instance.sandboxId}:`, err);
     }
@@ -67,6 +67,7 @@ instanceRouter.post('/sandbox', async (req, res) => {
       description: description || '',
       token: result.gatewayToken,
       sandboxId: result.sandboxId,
+      apiKey,
     });
     res.status(201).json(instance);
   } catch (err) {

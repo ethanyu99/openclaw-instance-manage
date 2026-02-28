@@ -139,6 +139,7 @@ export async function createSandbox(
     const host = sandbox.getHost(GATEWAY_PORT);
     const endpoint = `https://${host}`;
     console.log('[sandbox] Sandbox ready — endpoint:', endpoint);
+    console.log('[sandbox] WebUI:', `${endpoint}?token=${gwToken}`);
 
     return { sandboxId, endpoint, gatewayToken: gwToken };
   } catch (err) {

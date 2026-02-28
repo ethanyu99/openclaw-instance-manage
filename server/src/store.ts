@@ -16,7 +16,7 @@ function persist() {
 }
 
 function toPublic(inst: Instance): InstancePublic {
-  const { token, ...rest } = inst;
+  const { token, apiKey, ...rest } = inst;
   return { ...rest, hasToken: !!token };
 }
 
@@ -34,7 +34,7 @@ export const store = {
     return inst ? toPublic(inst) : undefined;
   },
 
-  createInstance(data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string; sandboxId?: string }): InstancePublic {
+  createInstance(data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string; sandboxId?: string; apiKey?: string }): InstancePublic {
     const id = uuid();
     const now = new Date().toISOString();
     const instance: Instance = {

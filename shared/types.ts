@@ -5,6 +5,7 @@ export interface Instance {
   name: string;
   endpoint: string;
   token?: string;
+  apiKey?: string;
   description: string;
   status: 'online' | 'offline' | 'busy';
   sandboxId?: string;
@@ -13,7 +14,7 @@ export interface Instance {
   updatedAt: string;
 }
 
-export type InstancePublic = Omit<Instance, 'token'> & { hasToken: boolean };
+export type InstancePublic = Omit<Instance, 'token' | 'apiKey'> & { hasToken: boolean };
 
 export interface TaskSummary {
   id: string;

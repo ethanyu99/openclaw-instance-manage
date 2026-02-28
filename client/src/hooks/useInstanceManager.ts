@@ -208,7 +208,7 @@ export function useInstanceManager() {
   const dispatchTask = useCallback((instanceId: string, content: string, instanceName: string, newSession?: boolean) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    const taskId = crypto.randomUUID();
+    const taskId = self.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const now = new Date().toISOString();
 
     taskContentRef.current[taskId] = '';
