@@ -4,3 +4,7 @@ dist
 .env
 .env.local
 .DS_Store
+
+# Persisted instance data & WS logs
+server/data/
+server/logs/

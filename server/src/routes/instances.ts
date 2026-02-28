@@ -3,55 +3,67 @@ import { store } from '../store';
 
 export const instanceRouter = Router();
 
-// GET all instances
 instanceRouter.get('/', (_req, res) => {
   const instances = store.getInstances();
   const stats = store.getStats();
   res.json({ instances, stats });
 });
 
-// GET single instance
 instanceRouter.get('/:id', (req, res) => {
   const instance = store.getInstance(req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   res.json(instance);
 });
 
-// POST create instance
 instanceRouter.post('/', (req, res) => {
-  const { name, endpoint, description } = req.body;
+  const { name, endpoint, description, token } = req.body;
   if (!name || !endpoint) {
     return res.status(400).json({ error: 'name and endpoint are required' });
   }
-  const instance = store.createInstance({ name, endpoint, description: description || '' });
+  const instance = store.createInstance({
+    name,
+    endpoint,
+    description: description || '',
+    token: token || undefined,
+  });
   res.status(201).json(instance);
 });
 
-// PUT update instance
 instanceRouter.put('/:id', (req, res) => {
-  const { name, endpoint, description } = req.body;
-  const instance = store.updateInstance(req.params.id, { name, endpoint, description });
+  const { name, endpoint, description, token } = req.body;
+  const instance = store.updateInstance(req.params.id, { name, endpoint, description, token });
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   res.json(instance);
 });
 
-// DELETE instance
 instanceRouter.delete('/:id', (req, res) => {
   const deleted = store.deleteInstance(req.params.id);
   if (!deleted) return res.status(404).json({ error: 'Instance not found' });
   res.status(204).send();
 });
 
-// POST health check for an instance
+function toHttpBase(endpoint: string): string {
+  return endpoint
+    .replace(/^ws:\/\//, 'http://')
+    .replace(/^wss:\/\//, 'https://')
+    .replace(/\/+$/, '');
+}
+
 instanceRouter.post('/:id/health', async (req, res) => {
-  const instance = store.getInstance(req.params.id);
+  const instance = store.getInstanceRaw(req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
+  const baseUrl = toHttpBase(instance.endpoint);
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(`${instance.endpoint}/health`, {
+    const headers: Record<string, string> = {};
+    if (instance.token) {
+      headers['Authorization'] = `Bearer ${instance.token}`;
+    }
+    const response = await fetch(`${baseUrl}/api/health`, {
       signal: controller.signal,
+      headers,
     });
     clearTimeout(timeout);
 

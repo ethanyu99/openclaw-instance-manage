@@ -3,24 +3,22 @@ import { StatusBar } from '@/components/StatusBar';
 import { InstanceCard } from '@/components/InstanceCard';
 import { AddInstanceDialog } from '@/components/AddInstanceDialog';
 import { TaskInput } from '@/components/TaskInput';
+import { HistoryDrawer } from '@/components/HistoryDrawer';
 import { useInstanceManager } from '@/hooks/useInstanceManager';
-import type { Instance } from '@shared/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function App() {
   const { instances, stats, taskStreams, connected, dispatchTask, refreshInstances } = useInstanceManager();
-  const [_selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
-
-  const handleSelect = (instance: Instance) => {
-    setSelectedInstance(instance);
-  };
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
-      {/* Top: Status Bar */}
-      <StatusBar stats={stats} connected={connected} />
+      <StatusBar
+        stats={stats}
+        connected={connected}
+        onHistoryClick={() => setHistoryOpen(true)}
+      />
 
-      {/* Middle: Instance Grid */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full flex flex-col">
           <div className="px-6 py-3 flex items-center justify-between border-b">
@@ -43,7 +41,6 @@ export default function App() {
                     instance={inst}
                     taskStream={taskStreams[inst.id]}
                     onRefresh={refreshInstances}
-                    onSelect={handleSelect}
                   />
                 ))
               )}
@@ -52,8 +49,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* Bottom: Task Input */}
       <TaskInput instances={instances} onDispatch={dispatchTask} />
+
+      <HistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
     </div>
   );
 }

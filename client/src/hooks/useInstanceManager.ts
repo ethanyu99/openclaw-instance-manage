@@ -1,15 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Instance, WSMessage, InstanceStats } from '@shared/types';
+import type { InstancePublic, WSMessage, InstanceStats } from '@shared/types';
 import { fetchInstances, createWebSocket } from '@/lib/api';
-import { saveTaskEntry, updateTaskEntry, type TaskHistoryEntry } from '@/lib/storage';
+import { addExchangeToSession, updateExchange, type SessionExchange } from '@/lib/storage';
+
+interface PendingExchange {
+  instanceId: string;
+  instanceName: string;
+  content: string;
+  timestamp: string;
+}
 
 export function useInstanceManager() {
-  const [instances, setInstances] = useState<Instance[]>([]);
+  const [instances, setInstances] = useState<InstancePublic[]>([]);
   const [stats, setStats] = useState<InstanceStats>({ total: 0, online: 0, busy: 0, offline: 0 });
   const [taskStreams, setTaskStreams] = useState<Record<string, string>>({});
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const taskContentRef = useRef<Record<string, string>>({});
+  const pendingExchangesRef = useRef<Record<string, PendingExchange>>({});
+  const instancesRef = useRef<InstancePublic[]>([]);
+
+  // Keep instancesRef in sync for use inside callbacks without stale closure
+  useEffect(() => {
+    instancesRef.current = instances;
+  }, [instances]);
 
   const loadInstances = useCallback(async () => {
     try {
@@ -25,7 +40,6 @@ export function useInstanceManager() {
     switch (msg.type) {
       case 'instance:status':
         if (msg.payload.instances) {
-          // Initial state
           setInstances(msg.payload.instances);
           setStats(msg.payload.stats);
         } else if (msg.payload.instanceId) {
@@ -39,25 +53,56 @@ export function useInstanceManager() {
         }
         break;
 
-      case 'task:status':
+      case 'task:status': {
+        // Create session exchange entry when we get sessionKey from server
+        const serverTaskId = msg.payload?.id || msg.taskId;
+        if (msg.sessionKey && serverTaskId) {
+          const pending = pendingExchangesRef.current[serverTaskId];
+          if (pending) {
+            const exchange: SessionExchange = {
+              id: serverTaskId,
+              input: pending.content,
+              status: msg.payload?.status || 'pending',
+              timestamp: pending.timestamp,
+            };
+            addExchangeToSession(msg.sessionKey, pending.instanceId, pending.instanceName, exchange);
+            delete pendingExchangesRef.current[serverTaskId];
+          } else if (msg.payload?.content) {
+            // Server-created task (e.g., after reconnect)
+            const inst = instancesRef.current.find(i => i.id === msg.instanceId);
+            const exchange: SessionExchange = {
+              id: serverTaskId,
+              input: msg.payload.content,
+              status: msg.payload.status || 'pending',
+              timestamp: msg.payload.createdAt || new Date().toISOString(),
+            };
+            addExchangeToSession(msg.sessionKey, msg.instanceId!, inst?.name || msg.instanceId!, exchange);
+          }
+        }
+
         if (msg.payload.status === 'running' || msg.payload.status === 'pending') {
           setInstances(prev =>
             prev.map(inst =>
               inst.id === msg.instanceId
-                ? { ...inst, currentTask: msg.payload, status: 'busy' }
+                ? { ...inst, currentTask: { ...inst.currentTask, ...msg.payload }, status: 'busy' }
                 : inst
             )
           );
         }
         break;
+      }
 
-      case 'task:stream':
+      case 'task:stream': {
+        const chunk = msg.payload.chunk || '';
         setTaskStreams(prev => ({
           ...prev,
-          [msg.instanceId!]: (prev[msg.instanceId!] || '') + (msg.payload.chunk || ''),
+          [msg.instanceId!]: (prev[msg.instanceId!] || '') + chunk,
         }));
+        if (msg.taskId) {
+          taskContentRef.current[msg.taskId] = (taskContentRef.current[msg.taskId] || '') + chunk;
+        }
         if (msg.taskId && msg.payload.summary) {
-          updateTaskEntry(msg.taskId, { summary: msg.payload.summary });
+          updateExchange(msg.taskId, { summary: msg.payload.summary });
           setInstances(prev =>
             prev.map(inst =>
               inst.id === msg.instanceId && inst.currentTask
@@ -67,13 +112,18 @@ export function useInstanceManager() {
           );
         }
         break;
+      }
 
       case 'task:complete':
         if (msg.taskId) {
-          updateTaskEntry(msg.taskId, {
+          const output = taskContentRef.current[msg.taskId] || msg.payload.summary || '';
+          updateExchange(msg.taskId, {
             status: 'completed',
             summary: msg.payload.summary,
+            output,
+            completedAt: new Date().toISOString(),
           });
+          delete taskContentRef.current[msg.taskId];
         }
         setInstances(prev =>
           prev.map(inst =>
@@ -92,10 +142,14 @@ export function useInstanceManager() {
 
       case 'task:error':
         if (msg.taskId) {
-          updateTaskEntry(msg.taskId, {
+          const output = taskContentRef.current[msg.taskId] || '';
+          updateExchange(msg.taskId, {
             status: 'failed',
             summary: msg.payload.error,
+            output: output || undefined,
+            completedAt: new Date().toISOString(),
           });
+          delete taskContentRef.current[msg.taskId];
         }
         setInstances(prev =>
           prev.map(inst =>
@@ -140,27 +194,20 @@ export function useInstanceManager() {
     };
   }, [connect, loadInstances]);
 
-  const dispatchTask = useCallback((instanceId: string, content: string, instanceName: string) => {
+  const dispatchTask = useCallback((instanceId: string, content: string, instanceName: string, newSession?: boolean) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     const taskId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Save to localStorage
-    const entry: TaskHistoryEntry = {
-      id: taskId,
-      instanceId,
-      instanceName,
-      content,
-      status: 'pending',
-      timestamp: now,
-      messages: [{ role: 'user', content, timestamp: now }],
-    };
-    saveTaskEntry(entry);
+    taskContentRef.current[taskId] = '';
+
+    // Store pending exchange — will be committed when server replies with sessionKey
+    pendingExchangesRef.current[taskId] = { instanceId, instanceName, content, timestamp: now };
 
     wsRef.current.send(JSON.stringify({
       type: 'task:dispatch',
-      payload: { instanceId, content },
+      payload: { instanceId, content, taskId, newSession },
       timestamp: now,
     }));
   }, []);

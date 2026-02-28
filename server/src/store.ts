@@ -1,22 +1,40 @@
-import { Instance, TaskSummary } from '../../shared/types';
+import type { Instance, InstancePublic, TaskSummary } from '../../shared/types';
 import { v4 as uuid } from 'uuid';
+import { loadInstances, saveInstances } from './persistence';
 
-// In-memory store (first version)
-const instances: Map<string, Instance> = new Map();
+const instances: Map<string, Instance> = loadInstances();
 const tasks: Map<string, TaskSummary> = new Map();
 const tasksByInstance: Map<string, string[]> = new Map();
+const sessionKeys: Map<string, string> = new Map();
+
+for (const id of instances.keys()) {
+  tasksByInstance.set(id, []);
+}
+
+function persist() {
+  saveInstances(instances);
+}
+
+function toPublic(inst: Instance): InstancePublic {
+  const { token, ...rest } = inst;
+  return { ...rest, hasToken: !!token };
+}
 
 export const store = {
-  // Instance operations
-  getInstances(): Instance[] {
-    return Array.from(instances.values());
+  getInstances(): InstancePublic[] {
+    return Array.from(instances.values()).map(toPublic);
   },
 
-  getInstance(id: string): Instance | undefined {
+  getInstanceRaw(id: string): Instance | undefined {
     return instances.get(id);
   },
 
-  createInstance(data: Pick<Instance, 'name' | 'endpoint' | 'description'>): Instance {
+  getInstance(id: string): InstancePublic | undefined {
+    const inst = instances.get(id);
+    return inst ? toPublic(inst) : undefined;
+  },
+
+  createInstance(data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string }): InstancePublic {
     const id = uuid();
     const now = new Date().toISOString();
     const instance: Instance = {
@@ -28,20 +46,33 @@ export const store = {
     };
     instances.set(id, instance);
     tasksByInstance.set(id, []);
-    return instance;
+    persist();
+    return toPublic(instance);
   },
 
-  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask'>>): Instance | undefined {
+  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token'>>): InstancePublic | undefined {
     const instance = instances.get(id);
     if (!instance) return undefined;
-    const updated = { ...instance, ...data, updatedAt: new Date().toISOString() };
+
+    const updateData: Partial<Instance> = { ...data, updatedAt: new Date().toISOString() };
+    if (data.token === '') {
+      updateData.token = undefined;
+    }
+
+    const updated = { ...instance, ...updateData };
     instances.set(id, updated);
-    return updated;
+
+    if (data.name !== undefined || data.endpoint !== undefined || data.description !== undefined || data.token !== undefined) {
+      persist();
+    }
+    return toPublic(updated);
   },
 
   deleteInstance(id: string): boolean {
     tasksByInstance.delete(id);
-    return instances.delete(id);
+    const deleted = instances.delete(id);
+    if (deleted) persist();
+    return deleted;
   },
 
   // Task operations
@@ -57,8 +88,8 @@ export const store = {
     return tasks.get(id);
   },
 
-  createTask(instanceId: string, content: string): TaskSummary {
-    const id = uuid();
+  createTask(instanceId: string, content: string, taskId?: string): TaskSummary {
+    const id = taskId || uuid();
     const now = new Date().toISOString();
     const task: TaskSummary = {
       id,
@@ -73,7 +104,6 @@ export const store = {
     instanceTasks.push(id);
     tasksByInstance.set(instanceId, instanceTasks);
 
-    // Update instance current task
     const instance = instances.get(instanceId);
     if (instance) {
       instances.set(instanceId, { ...instance, currentTask: task, updatedAt: now });
@@ -88,7 +118,6 @@ export const store = {
     const updated = { ...task, ...data, updatedAt: new Date().toISOString() };
     tasks.set(id, updated);
 
-    // Update instance current task
     if (data.status === 'completed' || data.status === 'failed') {
       const instance = instances.get(task.instanceId);
       if (instance && instance.currentTask?.id === id) {
@@ -121,5 +150,20 @@ export const store = {
       busy: all.filter(i => i.status === 'busy').length,
       offline: all.filter(i => i.status === 'offline').length,
     };
+  },
+
+  // Session key management — controls OpenResponses `user` field for session reuse
+  getSessionKey(instanceId: string): string {
+    const existing = sessionKeys.get(instanceId);
+    if (existing) return existing;
+    const key = `manager-${instanceId}`;
+    sessionKeys.set(instanceId, key);
+    return key;
+  },
+
+  resetSessionKey(instanceId: string): string {
+    const key = `manager-${instanceId}-${Date.now()}`;
+    sessionKeys.set(instanceId, key);
+    return key;
   },
 };

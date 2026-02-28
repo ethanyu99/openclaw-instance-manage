@@ -1,10 +1,10 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { WSMessage, TaskDispatchPayload } from '../../shared/types';
+import type { WSMessage, TaskDispatchPayload } from '../../shared/types';
 import { store } from './store';
+import { logWS, createLogEntry } from './ws-logger';
 
 const clients = new Set<WebSocket>();
 
-// Broadcast to all connected clients
 function broadcast(message: WSMessage) {
   const data = JSON.stringify(message);
   clients.forEach(client => {
@@ -14,10 +14,27 @@ function broadcast(message: WSMessage) {
   });
 }
 
-// Connect to an openclaw instance via WebSocket and proxy messages
-async function dispatchToInstance(instanceId: string, taskId: string, content: string) {
-  const instance = store.getInstance(instanceId);
+/**
+ * Normalize endpoint to an HTTP base URL.
+ * Accepts ws://, wss://, http://, https:// — always returns http(s)://
+ */
+function toHttpBase(endpoint: string): string {
+  return endpoint
+    .replace(/^ws:\/\//, 'http://')
+    .replace(/^wss:\/\//, 'https://')
+    .replace(/\/+$/, '');
+}
+
+/**
+ * Dispatch a task to an OpenClaw instance via the OpenResponses HTTP API.
+ * Uses `POST /v1/responses` with SSE streaming.
+ * Docs: https://docs.openclaw.ai/gateway/openresponses-http-api
+ */
+async function dispatchToInstance(instanceId: string, taskId: string, content: string, _newSession?: boolean) {
+  const instance = store.getInstanceRaw(instanceId);
   if (!instance) return;
+
+  const sessionUser = store.getSessionKey(instanceId);
 
   store.updateInstance(instanceId, { status: 'busy' });
   store.updateTask(taskId, { status: 'running' });
@@ -29,98 +46,234 @@ async function dispatchToInstance(instanceId: string, taskId: string, content: s
     timestamp: new Date().toISOString(),
   });
 
+  const updatedTask = store.getTask(taskId);
   broadcast({
     type: 'task:status',
-    payload: { taskId, status: 'running' },
+    payload: updatedTask || { taskId, status: 'running' },
     instanceId,
     taskId,
+    sessionKey: sessionUser,
     timestamp: new Date().toISOString(),
   });
 
-  // Try connecting to instance WS endpoint
+  const baseUrl = toHttpBase(instance.endpoint);
+  const url = `${baseUrl}/v1/responses`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-openclaw-agent-id': 'main',
+  };
+  if (instance.token) {
+    headers['Authorization'] = `Bearer ${instance.token}`;
+  }
+
+  const body = JSON.stringify({
+    model: 'openclaw',
+    input: content,
+    stream: true,
+    user: sessionUser,
+  });
+
+  logWS(createLogEntry('outbound', instanceId, instance.name, body));
+
+  let fullText = '';
+  let receivedCompletion = false;
+
   try {
-    const wsUrl = instance.endpoint.replace(/^http/, 'ws') + '/ws';
-    const instanceWs = new WebSocket(wsUrl);
+    const controller = new AbortController();
+    // Agent tool execution (bash, file read) can take many minutes
+    const timeout = setTimeout(() => controller.abort(), 600_000); // 10min max
 
-    instanceWs.on('open', () => {
-      instanceWs.send(JSON.stringify({ type: 'task', content, taskId }));
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Connection': 'keep-alive',
+      },
+      body,
+      signal: controller.signal,
     });
 
-    instanceWs.on('message', (data) => {
-      try {
-        const msg = JSON.parse(data.toString());
-        if (msg.type === 'stream' || msg.type === 'chunk') {
-          const summary = msg.summary || msg.content?.slice(0, 200);
-          store.updateTask(taskId, { summary });
-          broadcast({
-            type: 'task:stream',
-            payload: { instanceId, taskId, chunk: msg.content || '', summary },
-            instanceId,
-            taskId,
-            timestamp: new Date().toISOString(),
-          });
-        } else if (msg.type === 'complete' || msg.type === 'done') {
-          store.updateTask(taskId, { status: 'completed', summary: msg.summary || msg.content });
-          store.updateInstance(instanceId, { status: 'online' });
-          broadcast({
-            type: 'task:complete',
-            payload: { taskId, status: 'completed', summary: msg.summary || msg.content },
-            instanceId,
-            taskId,
-            timestamp: new Date().toISOString(),
-          });
-          instanceWs.close();
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => response.statusText);
+      logWS(createLogEntry('inbound', instanceId, instance.name, `HTTP ${response.status}: ${errText}`));
+      handleTaskFailure(instanceId, taskId, `HTTP ${response.status}: ${errText.slice(0, 200)}`, sessionUser);
+      return;
+    }
+
+    if (!response.body) {
+      handleTaskFailure(instanceId, taskId, 'No response body', sessionUser);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+
+          if (data === '[DONE]') {
+            logWS(createLogEntry('inbound', instanceId, instance.name, '[DONE]'));
+            continue;
+          }
+
+          try {
+            const event = JSON.parse(data);
+            logWS(createLogEntry('inbound', instanceId, instance.name, data));
+
+            if (event.type === 'response.completed' || event.type === 'response.failed') {
+              receivedCompletion = true;
+            }
+
+            handleSSEEvent(event, instanceId, taskId, fullText, sessionUser);
+
+            if (event.type === 'response.output_text.delta' && event.delta) {
+              fullText += event.delta;
+            }
+          } catch {
+            // not JSON, skip
+          }
         }
-      } catch {
-        // ignore parse errors
       }
-    });
+    }
 
-    instanceWs.on('error', () => {
-      store.updateTask(taskId, { status: 'failed', summary: 'Connection error' });
+    // Finalize if stream ended without explicit completion event
+    const task = store.getTask(taskId);
+    if (task && task.status === 'running') {
+      const summary = fullText.slice(0, 500) || 'Task completed';
+      store.updateTask(taskId, { status: 'completed', summary });
       store.updateInstance(instanceId, { status: 'online' });
       broadcast({
-        type: 'task:error',
-        payload: { taskId, error: 'Connection to instance failed' },
+        type: 'task:complete',
+        payload: { taskId, status: 'completed', summary },
         instanceId,
         taskId,
+        sessionKey: sessionUser,
         timestamp: new Date().toISOString(),
       });
-    });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    logWS(createLogEntry('inbound', instanceId, instance.name, `Error: ${message}`));
 
-    instanceWs.on('close', () => {
-      const task = store.getTask(taskId);
-      if (task && task.status === 'running') {
-        store.updateTask(taskId, { status: 'completed', summary: task.summary || 'Task completed' });
+    const task = store.getTask(taskId);
+    if (task && task.status === 'running') {
+      if (fullText.length > 0 && !receivedCompletion) {
+        const summary = fullText.slice(0, 500) + '\n\n[Connection lost — agent may still be running]';
+        store.updateTask(taskId, { status: 'completed', summary });
         store.updateInstance(instanceId, { status: 'online' });
         broadcast({
           type: 'task:complete',
-          payload: { taskId, status: 'completed' },
+          payload: { taskId, status: 'completed', summary },
           instanceId,
           taskId,
+          sessionKey: sessionUser,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        handleTaskFailure(instanceId, taskId, message, sessionUser);
+      }
+    }
+  }
+}
+
+function handleSSEEvent(
+  event: Record<string, unknown>,
+  instanceId: string,
+  taskId: string,
+  _accumulatedText: string,
+  sessionKey: string,
+) {
+  const eventType = event.type as string;
+
+  switch (eventType) {
+    case 'response.output_text.delta': {
+      const delta = (event.delta as string) || '';
+      if (delta) {
+        broadcast({
+          type: 'task:stream',
+          payload: { instanceId, taskId, chunk: delta, summary: delta.slice(0, 200) },
+          instanceId,
+          taskId,
+          sessionKey,
           timestamp: new Date().toISOString(),
         });
       }
-    });
-  } catch {
-    // If WS connection fails, simulate task completion for demo
-    store.updateTask(taskId, { status: 'failed', summary: 'Cannot connect to instance' });
-    store.updateInstance(instanceId, { status: 'offline' });
-    broadcast({
-      type: 'task:error',
-      payload: { taskId, error: 'Cannot connect to instance' },
-      instanceId,
-      taskId,
-      timestamp: new Date().toISOString(),
-    });
+      break;
+    }
+
+    case 'response.output_text.done': {
+      const text = (event.text as string) || '';
+      store.updateTask(taskId, { summary: text.slice(0, 500) });
+      break;
+    }
+
+    case 'response.completed': {
+      const output = event.response as Record<string, unknown> | undefined;
+      let summary = '';
+      if (output?.output && Array.isArray(output.output)) {
+        for (const item of output.output) {
+          if (item.type === 'message' && Array.isArray(item.content)) {
+            for (const part of item.content) {
+              if (part.type === 'output_text') {
+                summary += part.text || '';
+              }
+            }
+          }
+        }
+      }
+      store.updateTask(taskId, { status: 'completed', summary: summary.slice(0, 500) || 'Completed' });
+      store.updateInstance(instanceId, { status: 'online' });
+      broadcast({
+        type: 'task:complete',
+        payload: { taskId, status: 'completed', summary: summary.slice(0, 500) },
+        instanceId,
+        taskId,
+        sessionKey,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    }
+
+    case 'response.failed': {
+      const error = event.error as Record<string, unknown> | undefined;
+      const message = (error?.message as string) || 'Agent run failed';
+      handleTaskFailure(instanceId, taskId, message, sessionKey);
+      break;
+    }
   }
+}
+
+function handleTaskFailure(instanceId: string, taskId: string, error: string, sessionKey?: string) {
+  store.updateTask(taskId, { status: 'failed', summary: error });
+  store.updateInstance(instanceId, { status: 'online' });
+  broadcast({
+    type: 'task:error',
+    payload: { taskId, error },
+    instanceId,
+    taskId,
+    sessionKey,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 export function setupWebSocket(wss: WebSocketServer) {
   wss.on('connection', (ws) => {
     clients.add(ws);
 
-    // Send initial state
     ws.send(JSON.stringify({
       type: 'instance:status',
       payload: {
@@ -135,20 +288,25 @@ export function setupWebSocket(wss: WebSocketServer) {
         const msg: WSMessage = JSON.parse(data.toString());
 
         if (msg.type === 'task:dispatch') {
-          const { instanceId, content } = msg.payload as TaskDispatchPayload;
-          const task = store.createTask(instanceId, content);
+          const { instanceId, content, taskId: clientTaskId, newSession } = msg.payload as TaskDispatchPayload;
 
-          // Notify all clients about new task
+          if (newSession) {
+            store.resetSessionKey(instanceId);
+          }
+          const sessionKey = store.getSessionKey(instanceId);
+
+          const task = store.createTask(instanceId, content, clientTaskId || msg.taskId || undefined);
+
           broadcast({
             type: 'task:status',
             payload: { ...task },
             instanceId,
             taskId: task.id,
+            sessionKey,
             timestamp: new Date().toISOString(),
           });
 
-          // Dispatch to instance
-          dispatchToInstance(instanceId, task.id, content);
+          dispatchToInstance(instanceId, task.id, content, false);
         }
       } catch {
         // ignore parse errors
@@ -160,15 +318,22 @@ export function setupWebSocket(wss: WebSocketServer) {
     });
   });
 
-  // Periodic health check for all instances
+  // Periodic health check via OpenResponses API probe
   setInterval(async () => {
     const instances = store.getInstances();
     for (const instance of instances) {
       try {
+        const raw = store.getInstanceRaw(instance.id);
+        const baseUrl = toHttpBase(instance.endpoint);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
-        const response = await fetch(`${instance.endpoint}/health`, {
+        const headers: Record<string, string> = {};
+        if (raw?.token) {
+          headers['Authorization'] = `Bearer ${raw.token}`;
+        }
+        const response = await fetch(`${baseUrl}/api/health`, {
           signal: controller.signal,
+          headers,
         });
         clearTimeout(timeout);
 
@@ -197,5 +362,5 @@ export function setupWebSocket(wss: WebSocketServer) {
         }
       }
     }
-  }, 30000); // every 30 seconds
+  }, 30000);
 }

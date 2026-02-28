@@ -1,14 +1,14 @@
-import type { Instance, TaskSummary, WSMessage, InstanceStats } from '@shared/types';
+import type { InstancePublic, TaskSummary, WSMessage, InstanceStats } from '@shared/types';
 
 const API_BASE = '/api';
 
-export async function fetchInstances(): Promise<{ instances: Instance[]; stats: InstanceStats }> {
+export async function fetchInstances(): Promise<{ instances: InstancePublic[]; stats: InstanceStats }> {
   const res = await fetch(`${API_BASE}/instances`);
   if (!res.ok) throw new Error('Failed to fetch instances');
   return res.json();
 }
 
-export async function createInstance(data: { name: string; endpoint: string; description: string }): Promise<Instance> {
+export async function createInstance(data: { name: string; endpoint: string; description: string; token?: string }): Promise<InstancePublic> {
   const res = await fetch(`${API_BASE}/instances`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -18,7 +18,7 @@ export async function createInstance(data: { name: string; endpoint: string; des
   return res.json();
 }
 
-export async function updateInstance(id: string, data: { name?: string; endpoint?: string; description?: string }): Promise<Instance> {
+export async function updateInstance(id: string, data: { name?: string; endpoint?: string; description?: string; token?: string }): Promise<InstancePublic> {
   const res = await fetch(`${API_BASE}/instances/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

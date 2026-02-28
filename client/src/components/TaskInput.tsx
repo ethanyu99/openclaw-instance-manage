@@ -2,23 +2,20 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, X, History } from 'lucide-react';
-import type { Instance } from '@shared/types';
-import { getInstanceHistory, clearInstanceHistory, type TaskHistoryEntry } from '@/lib/storage';
+import { Send, X, RotateCcw } from 'lucide-react';
+import type { InstancePublic } from '@shared/types';
 import { resolveInstanceByName } from '@/lib/storage';
 
 interface TaskInputProps {
-  instances: Instance[];
-  onDispatch: (instanceId: string, content: string, instanceName: string) => void;
+  instances: InstancePublic[];
+  onDispatch: (instanceId: string, content: string, instanceName: string, newSession?: boolean) => void;
 }
 
 export function TaskInput({ instances, onDispatch }: TaskInputProps) {
   const [value, setValue] = useState('');
-  const [targetInstance, setTargetInstance] = useState<Instance | null>(null);
-  const [suggestions, setSuggestions] = useState<Instance[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<TaskHistoryEntry[]>([]);
+  const [targetInstance, setTargetInstance] = useState<InstancePublic | null>(null);
+  const [suggestions, setSuggestions] = useState<InstancePublic[]>([]);
+  const [pendingNewSession, setPendingNewSession] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const parseInput = useCallback((input: string) => {
@@ -48,12 +45,6 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
     parseInput(value);
   }, [value, parseInput]);
 
-  useEffect(() => {
-    if (targetInstance) {
-      setHistory(getInstanceHistory(targetInstance.id));
-    }
-  }, [targetInstance]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetInstance) return;
@@ -62,12 +53,12 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
     const content = match ? match[1].trim() : value.trim();
     if (!content) return;
 
-    onDispatch(targetInstance.id, content, targetInstance.name);
+    onDispatch(targetInstance.id, content, targetInstance.name, pendingNewSession || undefined);
     setValue(`@${targetInstance.name} `);
-    setHistory(getInstanceHistory(targetInstance.id));
+    setPendingNewSession(false);
   };
 
-  const selectSuggestion = (inst: Instance) => {
+  const selectSuggestion = (inst: InstancePublic) => {
     setTargetInstance(inst);
     setValue(`@${inst.name} `);
     setSuggestions([]);
@@ -77,20 +68,17 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
   const clearTarget = () => {
     setTargetInstance(null);
     setValue('');
-    setShowHistory(false);
+    setPendingNewSession(false);
     inputRef.current?.focus();
   };
 
-  const handleClearHistory = () => {
-    if (targetInstance) {
-      clearInstanceHistory(targetInstance.id);
-      setHistory([]);
-    }
+  const handleNewSession = () => {
+    setPendingNewSession(true);
+    inputRef.current?.focus();
   };
 
   return (
     <div className="border-t bg-card px-6 py-3 space-y-2">
-      {/* Suggestions dropdown */}
       {suggestions.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {suggestions.map(inst => (
@@ -109,49 +97,6 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
         </div>
       )}
 
-      {/* Task history panel */}
-      {showHistory && targetInstance && (
-        <div className="rounded-md border bg-muted/50 max-h-48">
-          <div className="flex items-center justify-between px-3 py-1.5 border-b">
-            <span className="text-xs font-medium">Task History - {targetInstance.name}</span>
-            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={handleClearHistory}>
-              Clear
-            </Button>
-          </div>
-          <ScrollArea className="max-h-36">
-            <div className="p-2 space-y-1.5">
-              {history.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-2">No task history</p>
-              ) : (
-                history.map(entry => (
-                  <div key={entry.id} className="text-xs flex items-start gap-2 py-1">
-                    <Badge
-                      variant={
-                        entry.status === 'completed' ? 'secondary' :
-                        entry.status === 'running' ? 'default' : 'outline'
-                      }
-                      className="text-[10px] shrink-0 mt-0.5"
-                    >
-                      {entry.status}
-                    </Badge>
-                    <div className="min-w-0">
-                      <p className="truncate">{entry.content}</p>
-                      {entry.summary && (
-                        <p className="text-muted-foreground truncate">{entry.summary}</p>
-                      )}
-                    </div>
-                    <span className="text-muted-foreground shrink-0 ml-auto">
-                      {new Date(entry.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
-
-      {/* Input row */}
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         {targetInstance && (
           <div className="flex items-center gap-1">
@@ -163,12 +108,14 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
             </Badge>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setShowHistory(!showHistory)}
+              variant={pendingNewSession ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs gap-1 shrink-0"
+              onClick={handleNewSession}
+              title="Start a new session (reset context)"
             >
-              <History className="h-3.5 w-3.5" />
+              <RotateCcw className="h-3 w-3" />
+              {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
             </Button>
           </div>
         )}
@@ -177,7 +124,9 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
           value={value}
           onChange={e => setValue(e.target.value)}
           placeholder={targetInstance
-            ? `Send task to ${targetInstance.name}...`
+            ? pendingNewSession
+              ? `New session — send first message to ${targetInstance.name}...`
+              : `Send task to ${targetInstance.name} (same session)...`
             : 'Type @instance-name to target an instance...'
           }
           className="flex-1"

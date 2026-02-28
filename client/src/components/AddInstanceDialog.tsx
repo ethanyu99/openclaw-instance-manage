@@ -20,6 +20,7 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [endpoint, setEndpoint] = useState('');
+  const [token, setToken] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -28,9 +29,15 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
     if (!name.trim() || !endpoint.trim()) return;
     setLoading(true);
     try {
-      await createInstance({ name: name.trim(), endpoint: endpoint.trim(), description: description.trim() });
+      await createInstance({
+        name: name.trim(),
+        endpoint: endpoint.trim(),
+        description: description.trim(),
+        token: token.trim() || undefined,
+      });
       setName('');
       setEndpoint('');
+      setToken('');
       setDescription('');
       setOpen(false);
       onCreated();
@@ -71,6 +78,20 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
               onChange={e => setEndpoint(e.target.value)}
               required
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="token">Gateway Token</Label>
+            <Input
+              id="token"
+              type="password"
+              placeholder="OPENCLAW_GATEWAY_TOKEN (optional)"
+              value={token}
+              onChange={e => setToken(e.target.value)}
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              If the instance has OPENCLAW_GATEWAY_TOKEN set, enter it here for authentication.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="desc">Description</Label>

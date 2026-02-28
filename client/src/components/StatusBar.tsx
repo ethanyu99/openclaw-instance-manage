@@ -1,12 +1,15 @@
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { History } from 'lucide-react';
 import type { InstanceStats } from '@shared/types';
 
 interface StatusBarProps {
   stats: InstanceStats;
   connected: boolean;
+  onHistoryClick: () => void;
 }
 
-export function StatusBar({ stats, connected }: StatusBarProps) {
+export function StatusBar({ stats, connected, onHistoryClick }: StatusBarProps) {
   return (
     <div className="border-b bg-card px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -33,9 +36,20 @@ export function StatusBar({ stats, connected }: StatusBarProps) {
           </span>
         </div>
       </div>
-      <Badge variant={connected ? 'default' : 'destructive'} className="text-xs">
-        {connected ? 'Connected' : 'Disconnected'}
-      </Badge>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs"
+          onClick={onHistoryClick}
+        >
+          <History className="h-3.5 w-3.5" />
+          History
+        </Button>
+        <Badge variant={connected ? 'default' : 'destructive'} className="text-xs">
+          {connected ? 'Connected' : 'Disconnected'}
+        </Badge>
+      </div>
     </div>
   );
 }
