@@ -1,0 +1,56 @@
+{
+    "models": {
+        "mode": "merge",
+        "providers": {
+            "novita": {
+                "baseUrl": "https://api.novita.ai/anthropic",
+                "apiKey": "NOVITA_API_KEY",
+                "api": "anthropic-messages",
+                "models": [
+                    {
+                        "id": "pa/claude-opus-4-6",
+                        "name": "Claude Opus 4.6",
+                        "reasoning": true,
+                        "input": [
+                            "text"
+                        ],
+                        "cost": {
+                            "input": 0,
+                            "output": 0,
+                            "cacheRead": 0,
+                            "cacheWrite": 0
+                        },
+                        "contextWindow": 200000,
+                        "maxTokens": 10000
+                    },
+                    {
+                        "id": "pa/claude-sonnet-4-6",
+                        "name": "Claude Opus 4.6",
+                        "reasoning": true,
+                        "input": [
+                            "text"
+                        ],
+                        "cost": {
+                            "input": 0,
+                            "output": 0,
+                            "cacheRead": 0,
+                            "cacheWrite": 0
+                        },
+                        "contextWindow": 200000,
+                        "maxTokens": 10000
+                    }
+                ]
+            }
+        }
+    },
+    "agents": {
+        "defaults": {
+            "model": {
+                "primary": "novita/pa/pa/claude-opus-4-6",
+                "fallbacks": [
+                    "novita/pa/claude-sonnet-4-6"
+                ]
+            }
+        }
+    }
+}

@@ -33,6 +33,24 @@ export async function deleteInstance(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete instance');
 }
 
+export async function createSandboxInstance(data: {
+  name: string;
+  apiKey: string;
+  gatewayToken?: string;
+  description?: string;
+}): Promise<InstancePublic> {
+  const res = await fetch(`${API_BASE}/instances/sandbox`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to create sandbox' }));
+    throw new Error(body.error || 'Failed to create sandbox');
+  }
+  return res.json();
+}
+
 export async function checkHealth(id: string): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/instances/${id}/health`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to check health');

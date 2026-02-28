@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud } from 'lucide-react';
 import type { InstancePublic } from '@shared/types';
 import { deleteInstance, checkHealth } from '@/lib/api';
 import { getExchangeById } from '@/lib/storage';
@@ -29,11 +29,21 @@ const statusBadgeVariant: Record<string, 'default' | 'secondary' | 'destructive'
 export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardProps) {
   const [detailOpen, setDetailOpen] = useState(false);
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete instance "${instance.name}"?`)) return;
-    await deleteInstance(instance.id);
-    onRefresh();
+    const msg = instance.sandboxId
+      ? `Delete instance "${instance.name}" and terminate its sandbox?`
+      : `Delete instance "${instance.name}"?`;
+    if (!confirm(msg)) return;
+    setDeleting(true);
+    try {
+      await deleteInstance(instance.id);
+      onRefresh();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleHealth = async (e: React.MouseEvent) => {
@@ -65,13 +75,19 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
               <CardTitle className="text-base">{instance.name}</CardTitle>
             </div>
             <div className="flex items-center gap-1">
+              {instance.sandboxId && (
+                <Badge variant="outline" className="text-xs gap-1 text-blue-600 border-blue-300">
+                  <Cloud className="h-3 w-3" />
+                  Sandbox
+                </Badge>
+              )}
               <Badge variant={statusBadgeVariant[instance.status]} className="text-xs">
                 {instance.status}
               </Badge>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleHealth}>
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={deleting}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>

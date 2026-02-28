@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { store } from '../store';
+import { createSandbox, killSandbox } from '../sandbox';
 
 export const instanceRouter = Router();
 
@@ -36,10 +37,43 @@ instanceRouter.put('/:id', (req, res) => {
   res.json(instance);
 });
 
-instanceRouter.delete('/:id', (req, res) => {
-  const deleted = store.deleteInstance(req.params.id);
-  if (!deleted) return res.status(404).json({ error: 'Instance not found' });
+instanceRouter.delete('/:id', async (req, res) => {
+  const instance = store.getInstanceRaw(req.params.id);
+  if (!instance) return res.status(404).json({ error: 'Instance not found' });
+
+  if (instance.sandboxId) {
+    try {
+      await killSandbox(instance.sandboxId);
+    } catch (err) {
+      console.warn(`[sandbox] Failed to kill sandbox ${instance.sandboxId}:`, err);
+    }
+  }
+
+  store.deleteInstance(req.params.id);
   res.status(204).send();
+});
+
+instanceRouter.post('/sandbox', async (req, res) => {
+  const { name, apiKey, gatewayToken, description } = req.body;
+  if (!name || !apiKey) {
+    return res.status(400).json({ error: 'name and apiKey are required' });
+  }
+
+  try {
+    const result = await createSandbox(apiKey, gatewayToken || undefined);
+    const instance = store.createInstance({
+      name,
+      endpoint: result.endpoint,
+      description: description || '',
+      token: result.gatewayToken,
+      sandboxId: result.sandboxId,
+    });
+    res.status(201).json(instance);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create sandbox';
+    console.error('[sandbox] Create failed:', message);
+    res.status(500).json({ error: message });
+  }
 });
 
 function toHttpBase(endpoint: string): string {

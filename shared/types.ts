@@ -7,12 +7,12 @@ export interface Instance {
   token?: string;
   description: string;
   status: 'online' | 'offline' | 'busy';
+  sandboxId?: string;
   currentTask?: TaskSummary;
   createdAt: string;
   updatedAt: string;
 }
 
-// Sanitized instance without sensitive fields (for client responses)
 export type InstancePublic = Omit<Instance, 'token'> & { hasToken: boolean };
 
 export interface TaskSummary {

@@ -7,7 +7,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -28,12 +27,13 @@ const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'o
 
 const markdownComponents: ComponentProps<typeof ReactMarkdown>['components'] = {
   pre: ({ children }) => (
-    <pre className="overflow-x-auto rounded-md bg-zinc-900 p-3 text-sm text-zinc-100">{children}</pre>
+    <pre className="not-prose overflow-x-auto rounded-md bg-zinc-900 p-3 text-[13px] leading-relaxed text-zinc-100 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-inherit">
+      {children}
+    </pre>
   ),
   code: ({ children, className }) => {
-    const isBlock = className?.startsWith('language-');
-    if (isBlock) {
-      return <code className={`${className} text-[13px] leading-relaxed`}>{children}</code>;
+    if (className?.startsWith('language-')) {
+      return <code className={className}>{children}</code>;
     }
     return (
       <code className="rounded bg-zinc-200 px-1.5 py-0.5 text-[13px] dark:bg-zinc-700">
@@ -50,13 +50,14 @@ const markdownComponents: ComponentProps<typeof ReactMarkdown>['components'] = {
 
 function MarkdownContent({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none break-words
-      prose-headings:mt-4 prose-headings:mb-2
-      prose-p:my-2 prose-p:leading-relaxed
-      prose-ul:my-2 prose-ol:my-2
-      prose-li:my-0.5
-      prose-hr:my-4
-      prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent"
+    <div className="prose prose-sm dark:prose-invert max-w-none break-words text-[13px]
+      prose-headings:mt-3 prose-headings:mb-1.5 prose-headings:text-sm
+      prose-h1:text-base prose-h2:text-sm prose-h3:text-sm
+      prose-p:my-1.5 prose-p:leading-relaxed prose-p:text-[13px]
+      prose-ul:my-1.5 prose-ol:my-1.5
+      prose-li:my-0.5 prose-li:text-[13px]
+      prose-hr:my-3
+      prose-strong:text-[13px]"
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {content}
@@ -84,8 +85,8 @@ export function SessionDetailDialog({ session, open, onOpenChange }: SessionDeta
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="space-y-4 px-6 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+          <div className="space-y-4">
             {session.exchanges.map((exchange, idx) => (
               <div key={exchange.id}>
                 {idx > 0 && <Separator className="mb-4" />}
@@ -124,7 +125,7 @@ export function SessionDetailDialog({ session, open, onOpenChange }: SessionDeta
               </div>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );

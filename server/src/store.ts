@@ -34,7 +34,7 @@ export const store = {
     return inst ? toPublic(inst) : undefined;
   },
 
-  createInstance(data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string }): InstancePublic {
+  createInstance(data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string; sandboxId?: string }): InstancePublic {
     const id = uuid();
     const now = new Date().toISOString();
     const instance: Instance = {
@@ -50,7 +50,7 @@ export const store = {
     return toPublic(instance);
   },
 
-  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token'>>): InstancePublic | undefined {
+  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token' | 'sandboxId'>>): InstancePublic | undefined {
     const instance = instances.get(id);
     if (!instance) return undefined;
 
