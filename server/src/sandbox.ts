@@ -184,7 +184,7 @@ export async function createSandbox(
 
 export async function killSandbox(sandboxId: string, apiKey?: string): Promise<void> {
   console.log('[sandbox] Killing sandbox:', sandboxId);
-  const opts = apiKey ? { apiKey } : {};
+  const opts = apiKey ? { apiKey, timeoutMs: SANDBOX_KEEP_ALIVE_MS } : { timeoutMs: SANDBOX_KEEP_ALIVE_MS };
   const sandbox = await Sandbox.connect(sandboxId, opts);
   await sandbox.kill();
   console.log('[sandbox] Sandbox terminated:', sandboxId);
