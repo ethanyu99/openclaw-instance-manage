@@ -143,32 +143,34 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
     !value.trim();
 
   return (
-    <div className="border-t bg-card px-6 py-3 space-y-2">
+    <div className="border-t border-border/60 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 py-4 space-y-2 shadow-[0_-4px_24px_-8px_rgba(0,0,0,0.05)] z-10 relative">
       {suggestions.length > 0 && (
-        <div className="flex flex-col gap-0.5 bg-popover border rounded-lg p-1 shadow-md max-h-48 overflow-y-auto">
+        <div className="flex flex-col gap-0.5 bg-popover border border-border/80 rounded-lg p-1.5 shadow-xl max-h-56 overflow-y-auto absolute bottom-full mb-2 left-6 right-6 w-[calc(100%-3rem)] z-50">
           {suggestions.map((item, idx) => (
             <button
               key={isAllOption(item) ? ALL_OPTION_ID : item.id}
-              className={`px-3 py-1.5 text-sm rounded-md text-left transition-colors flex items-center gap-2 ${
+              className={`px-3 py-2 text-sm rounded-md text-left transition-all flex items-center gap-2.5 ${
                 idx === highlightIndex
-                  ? 'bg-accent text-accent-foreground'
-                  : 'hover:bg-muted'
+                  ? 'bg-accent text-accent-foreground shadow-sm'
+                  : 'hover:bg-muted/60'
               }`}
               onClick={() => selectSuggestion(item)}
               onMouseEnter={() => setHighlightIndex(idx)}
             >
               {isAllOption(item) ? (
                 <>
-                  <Layers className="h-3.5 w-3.5 text-purple-500 shrink-0" />
-                  <span className="font-medium">@all</span>
-                  <span className="text-xs text-muted-foreground ml-auto">
+                  <div className="flex items-center justify-center w-5 h-5 rounded bg-purple-100 dark:bg-purple-900/30">
+                    <Layers className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                  </div>
+                  <span className="font-semibold tracking-tight">@all</span>
+                  <span className="text-xs text-muted-foreground ml-auto font-medium">
                     select all {instances.length} instances
                   </span>
                 </>
               ) : (
                 <>
                   <span
-                    className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                    className={`inline-block w-2 h-2 rounded-full shrink-0 shadow-sm ${
                       item.status === 'online'
                         ? 'bg-blue-500'
                         : item.status === 'busy'
@@ -176,8 +178,8 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
                           : 'bg-zinc-400'
                     }`}
                   />
-                  <span>{item.name}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground ml-auto bg-muted px-1.5 py-0.5 rounded-sm">
                     {item.status}
                   </span>
                 </>
@@ -185,35 +187,35 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
             </button>
           ))}
           {suggestions.length === 0 && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">
+            <div className="px-3 py-3 text-xs text-muted-foreground text-center">
               No matching instances
             </div>
           )}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-background border border-border/80 rounded-xl px-2 py-1.5 shadow-sm focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/50 transition-all">
         {targetInstances.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap shrink-0">
+          <div className="flex items-center gap-1.5 flex-wrap shrink-0 pl-1">
             {isAllSelected ? (
-              <Badge variant="default" className="gap-1 text-xs">
+              <Badge variant="default" className="gap-1 text-xs font-medium bg-primary/90 hover:bg-primary">
                 @all ({instances.length})
                 <button
                   type="button"
                   onClick={clearAllTargets}
-                  className="ml-0.5 hover:text-primary-foreground/80"
+                  className="ml-0.5 hover:text-primary-foreground/80 transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </Badge>
             ) : (
               targetInstances.map(inst => (
-                <Badge key={inst.id} variant="default" className="gap-1 text-xs">
+                <Badge key={inst.id} variant="default" className="gap-1 text-xs font-medium bg-primary/90 hover:bg-primary">
                   @{inst.name}
                   <button
                     type="button"
                     onClick={() => removeTarget(inst.id)}
-                    className="ml-0.5 hover:text-primary-foreground/80"
+                    className="ml-0.5 hover:text-primary-foreground/80 transition-colors"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -224,13 +226,14 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
               type="button"
               variant={pendingNewSession ? 'secondary' : 'ghost'}
               size="sm"
-              className="h-7 text-xs gap-1 shrink-0"
+              className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
               onClick={handleNewSession}
               title="Start a new session (reset context)"
             >
               <RotateCcw className="h-3 w-3" />
               {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
             </Button>
+            <div className="w-px h-4 bg-border/80 mx-1"></div>
           </div>
         )}
         <Input
@@ -245,9 +248,9 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
                 : `Send task to ${targetInstances.length} instance(s)... (type @ to add more)`
               : 'Type @ to select instance(s)...'
           }
-          className="flex-1"
+          className="flex-1 border-0 shadow-none focus-visible:ring-0 px-2 h-9 bg-transparent"
         />
-        <Button type="submit" size="icon" disabled={isSubmitDisabled}>
+        <Button type="submit" size="icon" disabled={isSubmitDisabled} className="h-8 w-8 rounded-lg shrink-0 transition-all">
           <Send className="h-4 w-4" />
         </Button>
       </form>

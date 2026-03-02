@@ -67,47 +67,50 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
 
   return (
     <>
-      <Card className="hover:border-primary/30 transition-colors">
-        <CardHeader className="pb-2">
+      <Card className="hover:border-primary/40 hover:shadow-md transition-all duration-200 bg-card border-border/80 shadow-sm">
+        <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={`inline-block w-2.5 h-2.5 rounded-full ${statusColor[instance.status]}`} />
-              <CardTitle className="text-base">{instance.name}</CardTitle>
+            <div className="flex items-center gap-2.5">
+              <span className={`inline-block w-2.5 h-2.5 rounded-full shadow-sm ${statusColor[instance.status]}`} />
+              <CardTitle className="text-base font-semibold tracking-tight">{instance.name}</CardTitle>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               {instance.sandboxId && (
-                <Badge variant="outline" className="text-xs gap-1 text-blue-600 border-blue-300">
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold gap-1 text-blue-600 border-blue-200 bg-blue-50/50">
                   <Cloud className="h-3 w-3" />
                   Sandbox
                 </Badge>
               )}
-              <Badge variant={statusBadgeVariant[instance.status]} className="text-xs">
+              <Badge variant={statusBadgeVariant[instance.status]} className="text-[10px] uppercase tracking-wider font-semibold">
                 {instance.status}
               </Badge>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleHealth}>
-                <RefreshCw className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" onClick={handleHealth}>
+                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={deleting}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive text-muted-foreground" onClick={handleDelete} disabled={deleting}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-          <CardDescription className="font-mono text-xs truncate">
+          <CardDescription className="font-mono text-xs truncate mt-1.5 text-muted-foreground/80 bg-muted/50 px-2 py-1 rounded-md border border-border/50 inline-block w-fit max-w-full">
             {instance.endpoint}
           </CardDescription>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="pt-4">
           {instance.description && (
-            <p className="text-sm text-muted-foreground mb-2">{instance.description}</p>
+            <p className="text-sm text-muted-foreground mb-3">{instance.description}</p>
           )}
 
           {instance.currentTask && (
             <div
-              className="rounded-md bg-muted p-2.5 text-sm space-y-1.5 cursor-pointer hover:bg-muted/80 transition-colors"
+              className="rounded-lg border border-border/60 bg-card p-3 text-sm space-y-2 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
               onClick={handleTaskClick}
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-xs">Current Task</span>
+                <span className="font-semibold text-xs text-foreground/80 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/40"></span>
+                  Current Task
+                </span>
                 <Badge
                   variant={
                     instance.currentTask.status === 'running'
@@ -116,16 +119,16 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
                       ? 'secondary'
                       : 'destructive'
                   }
-                  className="text-xs"
+                  className="text-[10px] uppercase tracking-wider font-semibold"
                 >
                   {instance.currentTask.status}
                 </Badge>
               </div>
-              <p className="text-xs text-foreground border-l-2 border-primary/40 pl-2 truncate" title={instance.currentTask.content}>
+              <p className="text-xs text-foreground font-medium border-l-2 border-primary/40 pl-2.5 truncate" title={instance.currentTask.content}>
                 {instance.currentTask.content}
               </p>
               {instance.currentTask.summary && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
+                <p className="text-xs text-muted-foreground line-clamp-2 pl-3 border-l-2 border-transparent">
                   {instance.currentTask.summary}
                 </p>
               )}
@@ -133,7 +136,7 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
           )}
 
           {taskStream && (
-            <div className="mt-2 rounded-md bg-zinc-950 text-emerald-400 p-2.5 font-mono text-xs max-h-32 overflow-y-auto">
+            <div className="mt-3 rounded-lg bg-[#0d1117] border border-border/40 text-emerald-400 p-3 font-mono text-[11px] leading-relaxed max-h-36 overflow-y-auto shadow-inner">
               <pre className="whitespace-pre-wrap break-words">{taskStream.slice(-500)}</pre>
             </div>
           )}
