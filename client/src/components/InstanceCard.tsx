@@ -138,10 +138,7 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
           </div>
           <div className="flex flex-col gap-1.5 mt-2.5 min-w-0">
             <div className="font-mono text-xs text-muted-foreground/80 bg-muted/50 px-2 py-1.5 rounded-md border border-border/50 min-w-0 overflow-hidden flex items-center">
-              <a href={instance.endpoint?.replace(/^ws/, 'http') || '#'} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline flex items-center gap-1.5 min-w-0 w-full">
-                <span className="truncate">{instance.endpoint || 'No endpoint'}</span>
-                <ExternalLink className="h-3 w-3 shrink-0" />
-              </a>
+              <span className="truncate select-text">{instance.endpoint || 'No endpoint'}</span>
             </div>
             {instance.sandboxId && instance.token && (
               <div className="font-mono text-xs text-blue-600/80 bg-blue-50/50 px-2 py-1.5 rounded-md border border-blue-200/50 min-w-0 overflow-hidden flex items-center">
