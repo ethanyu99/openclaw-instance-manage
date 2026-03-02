@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, MessageSquare } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { getSessions, clearSessions, deleteSession, type SessionHistory } from '@/lib/storage';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 
@@ -26,8 +26,11 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
 
   const refresh = () => setSessions(getSessions());
 
+  useEffect(() => {
+    if (open) refresh();
+  }, [open]);
+
   const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen) refresh();
     onOpenChange(isOpen);
   };
 
@@ -70,22 +73,24 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
     <>
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent side="right" className="flex flex-col p-0">
-          <SheetHeader className="p-6 pb-2">
+          <SheetHeader className="p-6 pb-4">
             <div className="flex items-center justify-between">
-              <SheetTitle>Session History</SheetTitle>
+              <SheetTitle className="font-mono text-base flex items-center gap-2">
+                <span className="text-blue-500">~/history</span>
+              </SheetTitle>
               {sessions.length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs text-destructive hover:text-destructive"
+                  className="h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                   onClick={handleClearAll}
                 >
-                  <Trash2 className="h-3 w-3 mr-1" />
-                  Clear
+                  <Trash2 className="h-3 w-3 mr-1.5" />
+                  Clear All
                 </Button>
               )}
             </div>
-            <SheetDescription>
+            <SheetDescription className="font-mono text-xs mt-1">
               {sessions.length} session{sessions.length !== 1 ? 's' : ''} recorded
             </SheetDescription>
           </SheetHeader>
@@ -101,51 +106,58 @@ export function HistoryDrawer({ open, onOpenChange }: HistoryDrawerProps) {
               <div className="p-2">
                 {Object.entries(grouped).map(([date, dateSessions]) => (
                   <div key={date} className="mb-4">
-                    <p className="text-xs font-medium text-muted-foreground px-3 py-1.5 sticky top-0 bg-background/95 backdrop-blur-sm">
-                      {date}
-                    </p>
-                    <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 px-3 py-1.5 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
+                      <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider">
+                        {date}
+                      </p>
+                      <div className="flex-1 h-px bg-border/50" />
+                    </div>
+                    <div className="space-y-1">
                       {dateSessions.map(session => {
                         const status = latestExchangeStatus(session);
                         return (
-                          <button
+                          <div
                             key={session.sessionKey}
-                            className="w-full text-left px-3 py-2.5 rounded-md hover:bg-muted transition-colors group"
+                            className="w-full text-left px-3 py-2 rounded-sm hover:bg-muted/50 border border-transparent hover:border-border transition-colors group relative cursor-pointer flex flex-col gap-1.5"
                             onClick={() => handleSessionClick(session)}
                           >
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-mono text-muted-foreground truncate">
-                                {session.instanceName}
-                              </span>
-                              <Badge variant="outline" className="text-[10px] h-5 gap-1 shrink-0">
-                                <MessageSquare className="h-2.5 w-2.5" />
-                                {session.exchanges.length}
-                              </Badge>
-                              {status === 'running' && (
-                                <Badge variant="default" className="text-[10px] h-5">running</Badge>
-                              )}
-                              <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                                {new Date(session.updatedAt).toLocaleTimeString()}
-                              </span>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <span className="text-xs font-mono text-primary font-medium truncate">
+                                  {session.instanceName}
+                                </span>
+                                {status === 'running' && (
+                                  <span className="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+                                )}
+                                <Badge variant="secondary" className="text-[9px] font-mono h-4 px-1 rounded-sm shrink-0">
+                                  {session.exchanges.length} msg
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 h-4">
+                                <span className="text-[10px] text-muted-foreground font-mono group-hover:hidden">
+                                  {new Date(session.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-destructive hidden group-hover:flex -my-0.5"
+                                  onClick={(e) => handleDeleteSession(e, session.sessionKey)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </div>
-                            <p className="text-sm truncate">{sessionPreview(session)}</p>
+                            <p className="text-[11px] truncate text-muted-foreground font-mono">
+                              <span className="text-blue-500 mr-1.5">❯</span>
+                              {sessionPreview(session)}
+                            </p>
                             {session.exchanges.length > 1 && (
-                              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                                Latest: {session.exchanges[session.exchanges.length - 1]?.input}
+                              <p className="text-[11px] text-muted-foreground/70 truncate font-mono">
+                                <span className="mr-1.5 opacity-0">❯</span>
+                                {session.exchanges[session.exchanges.length - 1]?.input}
                               </p>
                             )}
-                            <div className="flex items-center mt-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 text-[10px] text-destructive opacity-0 group-hover:opacity-100 transition-opacity px-1"
-                                onClick={(e) => handleDeleteSession(e, session.sessionKey)}
-                              >
-                                <Trash2 className="h-2.5 w-2.5 mr-0.5" />
-                                Delete
-                              </Button>
-                            </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
