@@ -27,7 +27,7 @@ export default function App() {
             </h2>
             <AddInstanceDialog onCreated={refreshInstances} />
           </div>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-6 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {instances.length === 0 ? (
                 <div className="col-span-full text-center py-20 text-muted-foreground">

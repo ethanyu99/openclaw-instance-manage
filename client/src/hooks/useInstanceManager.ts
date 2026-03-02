@@ -16,7 +16,7 @@ export function useInstanceManager() {
   const [taskStreams, setTaskStreams] = useState<Record<string, string>>({});
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskContentRef = useRef<Record<string, string>>({});
   const pendingExchangesRef = useRef<Record<string, PendingExchange>>({});
   const instancesRef = useRef<InstancePublic[]>([]);
@@ -200,7 +200,7 @@ export function useInstanceManager() {
     loadInstances();
     connect();
     return () => {
-      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current && clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
   }, [connect, loadInstances]);
