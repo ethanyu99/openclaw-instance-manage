@@ -33,6 +33,7 @@ WORKDIR /app
 COPY --from=builder /app/server/package.json /app/server/package-lock.json* ./server/
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/server/node_modules ./server/node_modules
+COPY --from=builder /app/server/openclaw ./server/dist/server/openclaw
 COPY --from=builder /app/client/dist ./client/dist
 
 ENV NODE_ENV=production
