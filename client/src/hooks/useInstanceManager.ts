@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import type { InstancePublic, WSMessage, InstanceStats } from '@shared/types';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { InstancePublic, WSMessage } from '@shared/types';
 import { fetchInstances, createWebSocket } from '@/lib/api';
 import { addExchangeToSession, updateExchange, type SessionExchange } from '@/lib/storage';
 
@@ -12,8 +12,14 @@ interface PendingExchange {
 
 export function useInstanceManager() {
   const [instances, setInstances] = useState<InstancePublic[]>([]);
-  const [stats, setStats] = useState<InstanceStats>({ total: 0, online: 0, busy: 0, offline: 0 });
   const [taskStreams, setTaskStreams] = useState<Record<string, string>>({});
+
+  const stats = useMemo(() => ({
+    total: instances.length,
+    online: instances.filter(i => i.status === 'online').length,
+    busy: instances.filter(i => i.status === 'busy').length,
+    offline: instances.filter(i => i.status === 'offline').length,
+  }), [instances]);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,7 +36,6 @@ export function useInstanceManager() {
     try {
       const data = await fetchInstances();
       setInstances(data.instances);
-      setStats(data.stats);
     } catch {
       // will retry on reconnect
     }
@@ -41,7 +46,6 @@ export function useInstanceManager() {
       case 'instance:status':
         if (msg.payload.instances) {
           setInstances(msg.payload.instances);
-          setStats(msg.payload.stats);
         } else if (msg.payload.instanceId) {
           setInstances(prev =>
             prev.map(inst =>

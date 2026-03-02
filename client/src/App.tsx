@@ -15,6 +15,7 @@ export default function App() {
     <div className="h-screen flex flex-col bg-[#f8f9fa] text-foreground font-sans selection:bg-primary/20 selection:text-primary">
       <StatusBar
         stats={stats}
+        instances={instances}
         connected={connected}
         onHistoryClick={() => setHistoryOpen(true)}
       />
