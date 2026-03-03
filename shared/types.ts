@@ -107,6 +107,34 @@ export interface OpenClawEvent {
 
 export type OpenClawFrame = OpenClawRequest | OpenClawResponse | OpenClawEvent;
 
+// Sandbox creation progress types
+export type SandboxProgressStep =
+  | 'creating_sandbox'
+  | 'sandbox_created'
+  | 'writing_config'
+  | 'config_written'
+  | 'starting_gateway'
+  | 'waiting_gateway'
+  | 'gateway_ready'
+  | 'starting_daemon'
+  | 'daemon_started'
+  | 'sandbox_ready';
+
+export interface SandboxProgress {
+  step: SandboxProgressStep;
+  message: string;
+  detail?: string;
+}
+
+export interface SandboxSSEEvent {
+  type: 'progress' | 'complete' | 'error';
+  step?: SandboxProgressStep;
+  message?: string;
+  detail?: string;
+  instance?: InstancePublic;
+  error?: string;
+}
+
 // WebSocket log entry
 export interface WSLogEntry {
   timestamp: string;

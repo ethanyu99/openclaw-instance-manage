@@ -1,28 +1,21 @@
 import { useEffect, useState } from 'react';
 
-const STEPS = [
-  'Requesting sandbox allocation',
-  'Provisioning container',
-  'Installing OpenClaw runtime',
-  'Configuring gateway endpoint',
-  'Running health checks',
-];
+export interface SandboxStep {
+  message: string;
+  done: boolean;
+}
 
-export function SandboxLoadingAnimation() {
+interface SandboxLoadingAnimationProps {
+  steps: SandboxStep[];
+}
+
+export function SandboxLoadingAnimation({ steps }: SandboxLoadingAnimationProps) {
   const [elapsed, setElapsed] = useState(0);
-  const [activeStep, setActiveStep] = useState(0);
   const [cursor, setCursor] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setElapsed(s => s + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveStep(prev => (prev < STEPS.length - 1 ? prev + 1 : prev));
-    }, 3500);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -44,16 +37,16 @@ export function SandboxLoadingAnimation() {
         <span>{pad(mins)}:{pad(secs)}</span>
       </div>
       <div className="space-y-0.5">
-        {STEPS.map((step, i) => {
-          if (i > activeStep) return null;
-          const done = i < activeStep;
+        {steps.map((step, i) => {
+          const isLast = !step.done && (i === steps.length - 1 || steps[i + 1]?.done === false);
+          const isActive = !step.done && isLast;
           return (
             <div key={i} className="flex items-center gap-1.5">
-              <span className={done ? 'text-emerald-400' : 'text-yellow-400'}>
-                {done ? '✓' : '›'}
+              <span className={step.done ? 'text-emerald-400' : 'text-yellow-400'}>
+                {step.done ? '✓' : '›'}
               </span>
-              <span className={done ? 'text-[#888]' : 'text-[#e0e0e0]'}>
-                {step}{!done && (cursor ? '█' : ' ')}
+              <span className={step.done ? 'text-[#888]' : 'text-[#e0e0e0]'}>
+                {step.message}{isActive && (cursor ? '█' : ' ')}
               </span>
             </div>
           );

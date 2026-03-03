@@ -81,8 +81,15 @@ instanceRouter.post('/sandbox', async (req, res) => {
     return res.status(400).json({ error: 'Instance name must be unique' });
   }
 
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
   try {
-    const result = await createSandbox(apiKey, gatewayToken || undefined);
+    const result = await createSandbox(apiKey, gatewayToken || undefined, (progress) => {
+      res.write(`data: ${JSON.stringify({ type: 'progress', step: progress.step, message: progress.message, detail: progress.detail })}\n\n`);
+    });
     const instance = store.createInstance({
       name,
       endpoint: result.endpoint,
@@ -91,11 +98,13 @@ instanceRouter.post('/sandbox', async (req, res) => {
       sandboxId: result.sandboxId,
       apiKey,
     });
-    res.status(201).json(instance);
+    res.write(`data: ${JSON.stringify({ type: 'complete', instance })}\n\n`);
+    res.end();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create sandbox';
     console.error('[sandbox] Create failed:', message);
-    res.status(500).json({ error: message });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+    res.end();
   }
 });
 

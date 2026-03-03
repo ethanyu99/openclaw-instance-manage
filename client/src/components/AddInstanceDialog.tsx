@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Plus, Cloud, Server } from 'lucide-react';
 import { createInstance, createSandboxInstance } from '@/lib/api';
 import { SandboxLoadingAnimation } from './SandboxLoadingAnimation';
+import type { SandboxStep } from './SandboxLoadingAnimation';
+import type { SandboxProgress, SandboxProgressStep } from '@shared/types';
 
 interface AddInstanceDialogProps {
   onCreated: () => void;
@@ -36,6 +38,31 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
   const [apiKey, setApiKey] = useState('');
   const [gatewayToken, setGatewayToken] = useState('');
   const [sandboxDesc, setSandboxDesc] = useState('');
+  const [progressSteps, setProgressSteps] = useState<SandboxStep[]>([]);
+
+  const COMPLETION_STEPS: Set<SandboxProgressStep> = new Set([
+    'sandbox_created', 'config_written', 'gateway_ready', 'daemon_started', 'sandbox_ready',
+  ]);
+
+  const handleProgress = useCallback((progress: SandboxProgress) => {
+    setProgressSteps(prev => {
+      if (COMPLETION_STEPS.has(progress.step)) {
+        const updated = prev.map(s => ({ ...s, done: true }));
+        if (progress.step === 'sandbox_ready') {
+          updated.push({ message: progress.message, done: true });
+        }
+        return updated;
+      }
+      if (progress.step === 'waiting_gateway') {
+        if (prev.length > 0 && !prev[prev.length - 1].done) {
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...updated[updated.length - 1], message: progress.message };
+          return updated;
+        }
+      }
+      return [...prev, { message: progress.message, done: false }];
+    });
+  }, []);
 
   const resetForm = () => {
     setName('');
@@ -47,6 +74,7 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
     setGatewayToken('');
     setSandboxDesc('');
     setError('');
+    setProgressSteps([]);
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -76,13 +104,17 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
     if (!sandboxName.trim() || !apiKey.trim()) return;
     setLoading(true);
     setError('');
+    setProgressSteps([]);
     try {
-      await createSandboxInstance({
-        name: sandboxName.trim(),
-        apiKey: apiKey.trim(),
-        gatewayToken: gatewayToken.trim() || undefined,
-        description: sandboxDesc.trim() || undefined,
-      });
+      await createSandboxInstance(
+        {
+          name: sandboxName.trim(),
+          apiKey: apiKey.trim(),
+          gatewayToken: gatewayToken.trim() || undefined,
+          description: sandboxDesc.trim() || undefined,
+        },
+        handleProgress,
+      );
       resetForm();
       setOpen(false);
       onCreated();
@@ -195,7 +227,7 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Creating Sandbox...' : 'Create Sandbox Instance'}
             </Button>
-            {loading && <SandboxLoadingAnimation />}
+            {loading && <SandboxLoadingAnimation steps={progressSteps} />}
           </form>
         ) : (
           <form onSubmit={handleManualSubmit} className="space-y-4">

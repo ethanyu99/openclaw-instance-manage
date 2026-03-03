@@ -2,6 +2,7 @@ import { Sandbox } from 'novita-sandbox';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import type { SandboxProgress } from '../../shared/types';
 
 const TEMPLATE_ID = 'openclaw';
 const SANDBOX_APP_LABEL = 'novita-openclaw';
@@ -101,10 +102,15 @@ export interface SandboxCreateResult {
 export async function createSandbox(
   apiKey: string,
   gatewayToken?: string,
+  onProgress?: (progress: SandboxProgress) => void,
 ): Promise<SandboxCreateResult> {
   const gwToken = gatewayToken || crypto.randomBytes(16).toString('base64url');
+  const emit = (progress: SandboxProgress) => {
+    console.log(`[sandbox] ${progress.message}`);
+    onProgress?.(progress);
+  };
 
-  console.log('[sandbox] Creating sandbox from template:', TEMPLATE_ID);
+  emit({ step: 'creating_sandbox', message: `Creating sandbox from template: ${TEMPLATE_ID}` });
   const sandbox = await Sandbox.create(TEMPLATE_ID, {
     timeoutMs: SANDBOX_KEEP_ALIVE_MS,
     metadata: SANDBOX_METADATA,
@@ -112,18 +118,18 @@ export async function createSandbox(
   });
 
   const sandboxId = sandbox.sandboxId;
-  console.log('[sandbox] Sandbox created:', sandboxId);
+  emit({ step: 'sandbox_created', message: `Sandbox created: ${sandboxId}`, detail: sandboxId });
 
   try {
-    console.log('[sandbox] Writing OpenClaw configuration...');
+    emit({ step: 'writing_config', message: 'Writing OpenClaw configuration...' });
     const config = generateOpenClawConfig(apiKey, gwToken);
     const configContent = JSON.stringify(config, null, 2);
 
     await sandbox.commands.run('mkdir -p /home/user/.openclaw', { timeoutMs: 10_000 });
     await sandbox.files.write(OPENCLAW_CONFIG_PATH, configContent);
-    console.log('[sandbox] OpenClaw configuration written');
+    emit({ step: 'config_written', message: 'OpenClaw configuration written' });
 
-    console.log('[sandbox] Starting OpenClaw Gateway on port', GATEWAY_PORT);
+    emit({ step: 'starting_gateway', message: `Starting OpenClaw Gateway on port ${GATEWAY_PORT}` });
     await sandbox.commands.run(
       `nohup bash -c 'OPENCLAW_CONFIG_PATH=${OPENCLAW_CONFIG_PATH} openclaw gateway --port ${GATEWAY_PORT} --bind lan' > /tmp/gateway.log 2>&1 &`,
       { timeoutMs: 10_000 },
@@ -145,7 +151,7 @@ export async function createSandbox(
         // retry
       }
       if ((i + 1) % 10 === 0) {
-        console.log(`[sandbox] Waiting for Gateway to start (${i + 1}/${maxChecks})...`);
+        emit({ step: 'waiting_gateway', message: `Waiting for Gateway to start (${i + 1}/${maxChecks})...`, detail: `${i + 1}/${maxChecks}` });
       }
       await sleep(1000);
     }
@@ -159,19 +165,19 @@ export async function createSandbox(
       console.error('[sandbox] Gateway failed to start. Log:', logText || '(empty)');
       throw new Error(`Gateway did not start in time.${logText ? `\n${logText}` : ''}`);
     }
-    console.log('[sandbox] Gateway is ready');
+    emit({ step: 'gateway_ready', message: 'Gateway is ready' });
 
-    console.log('[sandbox] Starting device auto-approve daemon...');
+    emit({ step: 'starting_daemon', message: 'Starting device auto-approve daemon...' });
     await sandbox.files.write('/tmp/device-auto-approve.sh', DEVICE_AUTO_APPROVE_SCRIPT);
     await sandbox.commands.run(
       'nohup bash /tmp/device-auto-approve.sh > /tmp/device-auto-approve.log 2>&1 &',
       { timeoutMs: 10_000 },
     );
-    console.log('[sandbox] Device auto-approve daemon started');
+    emit({ step: 'daemon_started', message: 'Device auto-approve daemon started' });
 
     const host = sandbox.getHost(GATEWAY_PORT);
     const endpoint = `https://${host}`;
-    console.log('[sandbox] Sandbox ready — endpoint:', endpoint);
+    emit({ step: 'sandbox_ready', message: `Sandbox ready — endpoint: ${endpoint}` });
     console.log('[sandbox] WebUI:', `${endpoint}?token=${gwToken}`);
 
     return { sandboxId, endpoint, gatewayToken: gwToken };
