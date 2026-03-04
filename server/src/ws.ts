@@ -1,8 +1,9 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
-import type { WSMessage, TaskDispatchPayload } from '../../shared/types';
+import type { WSMessage, TaskDispatchPayload, TeamDispatchPayload } from '../../shared/types';
 import { store } from './store';
 import { logWS, createLogEntry } from './ws-logger';
+import { dispatchToTeam } from './team-dispatch';
 
 interface WSClient {
   ws: WebSocket;
@@ -359,6 +360,11 @@ export function setupWebSocket(wss: WebSocketServer) {
           });
 
           dispatchToInstance(userId, instanceId, task.id, content, false, imageUrls);
+        }
+
+        if (msg.type === 'team:dispatch') {
+          const { teamId, content } = msg.payload as TeamDispatchPayload;
+          dispatchToTeam(userId, teamId, content, broadcastToOwner);
         }
       } catch {
         // ignore parse errors

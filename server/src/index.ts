@@ -10,6 +10,7 @@ import http from 'http';
 import { WebSocketServer } from 'ws';
 import { instanceRouter } from './routes/instances';
 import { taskRouter } from './routes/tasks';
+import { teamRouter } from './routes/teams';
 import { uploadRouter } from './routes/upload';
 import { setupWebSocket } from './ws';
 import { authMiddleware } from './auth';
@@ -26,6 +27,7 @@ app.use(express.json());
 // Auth middleware for all API routes
 app.use('/api/instances', authMiddleware, instanceRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
+app.use('/api/teams', authMiddleware, teamRouter);
 app.use('/api/upload', uploadRouter);
 
 // Serve locally uploaded files

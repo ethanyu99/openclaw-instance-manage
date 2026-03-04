@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -105,6 +105,19 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
               <CardTitle className="text-base font-semibold tracking-tight">{instance.name}</CardTitle>
             </div>
             <div className="flex items-center gap-1.5">
+              {instance.role && (
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] tracking-wider font-semibold gap-1 ${
+                    instance.role.isLead
+                      ? 'text-amber-600 border-amber-200 bg-amber-50/50'
+                      : 'text-violet-600 border-violet-200 bg-violet-50/50'
+                  }`}
+                >
+                  {instance.role.isLead && <Star className="h-2.5 w-2.5" />}
+                  {instance.role.name}
+                </Badge>
+              )}
               {instance.sandboxId && (
                 <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold gap-1 text-blue-600 border-blue-200 bg-blue-50/50">
                   <Cloud className="h-3 w-3" />
@@ -153,6 +166,16 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
         <CardContent className="pt-4">
           {instance.description && (
             <p className="text-sm text-muted-foreground mb-3">{instance.description}</p>
+          )}
+
+          {instance.role && instance.role.capabilities.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-3">
+              {instance.role.capabilities.map((cap, i) => (
+                <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                  {cap}
+                </Badge>
+              ))}
+            </div>
           )}
 
           {instance.currentTask && (

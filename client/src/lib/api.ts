@@ -1,4 +1,4 @@
-import type { InstancePublic, TaskSummary, WSMessage, InstanceStats, SandboxProgress, SandboxSSEEvent } from '@shared/types';
+import type { InstancePublic, TaskSummary, WSMessage, InstanceStats, SandboxProgress, SandboxSSEEvent, TeamPublic, TeamTemplate, ClawRole } from '@shared/types';
 import { getUserId } from './user';
 
 const API_BASE = '/api';
@@ -146,6 +146,91 @@ export async function uploadFiles(files: File[]): Promise<{ url: string; key: st
   }
   const data = await res.json();
   return data.files;
+}
+
+// ── Team API ──────────────────────────
+
+export async function fetchTeams(): Promise<{ teams: TeamPublic[] }> {
+  const res = await fetch(`${API_BASE}/teams`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch teams');
+  return res.json();
+}
+
+export async function fetchTeamTemplates(): Promise<{ templates: TeamTemplate[] }> {
+  const res = await fetch(`${API_BASE}/teams/templates`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch templates');
+  return res.json();
+}
+
+export async function fetchTeam(id: string): Promise<TeamPublic> {
+  const res = await fetch(`${API_BASE}/teams/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch team');
+  return res.json();
+}
+
+export async function createTeam(data: {
+  name: string;
+  description?: string;
+  templateId?: string;
+  roles?: Omit<ClawRole, 'id'>[];
+}): Promise<TeamPublic> {
+  const res = await fetch(`${API_BASE}/teams`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to create team' }));
+    throw new Error(body.error || 'Failed to create team');
+  }
+  return res.json();
+}
+
+export async function updateTeam(id: string, data: { name?: string; description?: string }): Promise<TeamPublic> {
+  const res = await fetch(`${API_BASE}/teams/${id}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to update team' }));
+    throw new Error(body.error || 'Failed to update team');
+  }
+  return res.json();
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/teams/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete team');
+}
+
+export async function bindInstanceToRole(teamId: string, instanceId: string, roleId: string): Promise<TeamPublic> {
+  const res = await fetch(`${API_BASE}/teams/${teamId}/bind`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ instanceId, roleId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to bind instance' }));
+    throw new Error(body.error || 'Failed to bind instance');
+  }
+  return res.json();
+}
+
+export async function unbindInstance(teamId: string, instanceId: string): Promise<TeamPublic> {
+  const res = await fetch(`${API_BASE}/teams/${teamId}/unbind`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ instanceId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Failed to unbind instance' }));
+    throw new Error(body.error || 'Failed to unbind instance');
+  }
+  return res.json();
 }
 
 export function createWebSocket(onMessage: (msg: WSMessage) => void): WebSocket {

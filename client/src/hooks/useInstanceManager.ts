@@ -174,6 +174,20 @@ export function useInstanceManager() {
         );
         loadInstances();
         break;
+
+      case 'team:step':
+      case 'team:complete':
+      case 'team:error':
+        setTeamLogs(prev => [
+          ...prev,
+          {
+            teamId: msg.teamId || '',
+            message: msg.payload.message || msg.payload.error || '',
+            phase: msg.payload.phase || msg.type,
+            timestamp: msg.timestamp,
+          },
+        ]);
+        break;
     }
   }, [loadInstances]);
 
@@ -208,6 +222,17 @@ export function useInstanceManager() {
     };
   }, [connect, loadInstances]);
 
+  const [teamLogs, setTeamLogs] = useState<Array<{ teamId: string; message: string; phase: string; timestamp: string }>>([]);
+
+  const dispatchTeamTask = useCallback((teamId: string, content: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'team:dispatch',
+      payload: { teamId, content },
+      timestamp: new Date().toISOString(),
+    }));
+  }, []);
+
   const dispatchTask = useCallback((instanceId: string, content: string, instanceName: string, newSession?: boolean, imageUrls?: string[]) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
@@ -235,6 +260,8 @@ export function useInstanceManager() {
     taskStreams,
     connected,
     dispatchTask,
+    dispatchTeamTask,
+    teamLogs,
     refreshInstances: loadInstances,
   };
 }

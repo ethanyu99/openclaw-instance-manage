@@ -1,5 +1,47 @@
 // Shared types between server and client
 
+// ──────────────────────────────────────
+// Role & Team
+// ──────────────────────────────────────
+
+export interface ClawRole {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  isLead: boolean;
+}
+
+export interface TeamMemberSlot {
+  roleId: string;
+  instanceId?: string;
+}
+
+export interface Team {
+  id: string;
+  ownerId: string;
+  name: string;
+  description: string;
+  members: TeamMemberSlot[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TeamPublic = Team & {
+  roles: ClawRole[];
+};
+
+export interface TeamTemplate {
+  id: string;
+  name: string;
+  description: string;
+  roles: Omit<ClawRole, 'id'>[];
+}
+
+// ──────────────────────────────────────
+// Instance
+// ──────────────────────────────────────
+
 export interface Instance {
   id: string;
   ownerId: string;
@@ -10,12 +52,17 @@ export interface Instance {
   description: string;
   status: 'online' | 'offline' | 'busy';
   sandboxId?: string;
+  teamId?: string;
+  roleId?: string;
   currentTask?: TaskSummary;
   createdAt: string;
   updatedAt: string;
 }
 
-export type InstancePublic = Omit<Instance, 'apiKey'> & { hasToken: boolean };
+export type InstancePublic = Omit<Instance, 'apiKey'> & {
+  hasToken: boolean;
+  role?: ClawRole;
+};
 
 export interface TaskSummary {
   id: string;
@@ -50,13 +97,18 @@ export type WSMessageType =
   | 'task:stream'
   | 'task:complete'
   | 'task:error'
-  | 'instance:status';
+  | 'instance:status'
+  | 'team:dispatch'
+  | 'team:step'
+  | 'team:complete'
+  | 'team:error';
 
 export interface WSMessage {
   type: WSMessageType;
   payload: any;
   instanceId?: string;
   taskId?: string;
+  teamId?: string;
   sessionKey?: string;
   timestamp: string;
 }
@@ -67,6 +119,11 @@ export interface TaskDispatchPayload {
   taskId?: string;
   newSession?: boolean;
   imageUrls?: string[];
+}
+
+export interface TeamDispatchPayload {
+  teamId: string;
+  content: string;
 }
 
 export interface TaskStreamPayload {

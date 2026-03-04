@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Send, X, RotateCcw, Layers, ImagePlus, Loader2 } from 'lucide-react';
-import type { InstancePublic } from '@shared/types';
+import { Send, X, RotateCcw, Layers, ImagePlus, Loader2, Users } from 'lucide-react';
+import type { InstancePublic, TeamPublic } from '@shared/types';
 import { uploadFiles } from '@/lib/api';
 
 interface TaskInputProps {
   instances: InstancePublic[];
+  teams?: TeamPublic[];
   onDispatch: (instanceId: string, content: string, instanceName: string, newSession?: boolean, imageUrls?: string[]) => void;
+  onTeamDispatch?: (teamId: string, content: string) => void;
 }
 
 interface PastedImage {
@@ -17,21 +19,33 @@ interface PastedImage {
 }
 
 const ALL_OPTION_ID = '__all__';
+const TEAM_PREFIX = '__team__';
 
 interface AllOption {
   id: typeof ALL_OPTION_ID;
   name: string;
 }
 
-type SuggestionItem = InstancePublic | AllOption;
+interface TeamOption {
+  id: string;
+  name: string;
+  team: TeamPublic;
+}
+
+type SuggestionItem = InstancePublic | AllOption | TeamOption;
 
 function isAllOption(item: SuggestionItem): item is AllOption {
   return item.id === ALL_OPTION_ID;
 }
 
-export function TaskInput({ instances, onDispatch }: TaskInputProps) {
+function isTeamOption(item: SuggestionItem): item is TeamOption {
+  return item.id.startsWith(TEAM_PREFIX);
+}
+
+export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch }: TaskInputProps) {
   const [value, setValue] = useState('');
   const [targetInstances, setTargetInstances] = useState<InstancePublic[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<TeamPublic | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [pendingNewSession, setPendingNewSession] = useState(false);
@@ -55,14 +69,27 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
 
     const items: SuggestionItem[] = [];
 
-    if (available.length > 1 && (!partial || 'all'.startsWith(partial))) {
+    // Team options
+    if (!selectedTeam && teams.length > 0) {
+      const filteredTeams = teams.filter(t =>
+        !partial || t.name.toLowerCase().includes(partial) || 'team'.startsWith(partial)
+      );
+      for (const t of filteredTeams) {
+        items.push({ id: `${TEAM_PREFIX}${t.id}`, name: t.name, team: t });
+      }
+    }
+
+    if (!selectedTeam && available.length > 1 && (!partial || 'all'.startsWith(partial))) {
       items.push({ id: ALL_OPTION_ID, name: 'all' });
     }
 
-    items.push(...filtered);
+    if (!selectedTeam) {
+      items.push(...filtered);
+    }
+
     setSuggestions(items);
     setHighlightIndex(0);
-  }, [value, instances, targetInstances]);
+  }, [value, instances, teams, targetInstances, selectedTeam]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -73,12 +100,17 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
   }, [value]);
 
   const selectSuggestion = (item: SuggestionItem) => {
-    if (isAllOption(item)) {
+    if (isTeamOption(item)) {
+      setSelectedTeam(item.team);
+      setTargetInstances([]);
+    } else if (isAllOption(item)) {
+      setSelectedTeam(null);
       setTargetInstances([...instances]);
     } else {
+      setSelectedTeam(null);
       setTargetInstances(prev => {
         if (prev.some(t => t.id === item.id)) return prev;
-        return [...prev, item];
+        return [...prev, item as InstancePublic];
       });
     }
     setValue('');
@@ -92,6 +124,7 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
 
   const clearAllTargets = () => {
     setTargetInstances([]);
+    setSelectedTeam(null);
     setValue('');
     setPendingNewSession(false);
     setImages([]);
@@ -146,10 +179,19 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
 
   const handleSubmit = async () => {
     if (uploading) return;
-    if (targetInstances.length === 0) return;
 
     const content = value.trim();
     if (!content && images.length === 0) return;
+
+    // Team mode
+    if (selectedTeam) {
+      if (!content) return;
+      onTeamDispatch?.(selectedTeam.id, content);
+      setValue('');
+      return;
+    }
+
+    if (targetInstances.length === 0) return;
 
     let imageUrls: string[] | undefined;
 
@@ -169,7 +211,6 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
       onDispatch(inst.id, content, inst.name, pendingNewSession || undefined, imageUrls);
     }
 
-    // Cleanup previews
     for (const img of images) {
       URL.revokeObjectURL(img.preview);
     }
@@ -239,10 +280,12 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
   const isAllSelected =
     targetInstances.length === instances.length && instances.length > 1;
 
+  const hasTarget = targetInstances.length > 0 || selectedTeam !== null;
+
   const isSubmitDisabled =
     uploading ||
     suggestions.length > 0 ||
-    targetInstances.length === 0 ||
+    !hasTarget ||
     (!value.trim() && images.length === 0);
 
   return (
@@ -260,7 +303,17 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
               onClick={() => selectSuggestion(item)}
               onMouseEnter={() => setHighlightIndex(idx)}
             >
-              {isAllOption(item) ? (
+              {isTeamOption(item) ? (
+                <>
+                  <div className="flex items-center justify-center w-5 h-5 rounded bg-violet-100 dark:bg-violet-900/30">
+                    <Users className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
+                  </div>
+                  <span className="font-semibold tracking-tight">@team:{item.name}</span>
+                  <span className="text-xs text-muted-foreground ml-auto font-medium">
+                    {item.team.roles.length} roles
+                  </span>
+                </>
+              ) : isAllOption(item) ? (
                 <>
                   <div className="flex items-center justify-center w-5 h-5 rounded bg-purple-100 dark:bg-purple-900/30">
                     <Layers className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
@@ -274,16 +327,16 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
                 <>
                   <span
                     className={`inline-block w-2 h-2 rounded-full shrink-0 shadow-sm ${
-                      item.status === 'online'
+                      (item as InstancePublic).status === 'online'
                         ? 'bg-blue-500'
-                        : item.status === 'busy'
+                        : (item as InstancePublic).status === 'busy'
                           ? 'bg-emerald-500'
                           : 'bg-zinc-400'
                     }`}
                   />
                   <span className="font-medium">{item.name}</span>
                   <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground ml-auto bg-muted px-1.5 py-0.5 rounded-sm">
-                    {item.status}
+                    {(item as InstancePublic).status}
                   </span>
                 </>
               )}
@@ -320,9 +373,21 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
         )}
 
         {/* Target badges row */}
-        {targetInstances.length > 0 && (
+        {(targetInstances.length > 0 || selectedTeam) && (
           <div className="flex items-center gap-1.5 flex-wrap px-3 pt-2.5 pb-0.5">
-            {isAllSelected ? (
+            {selectedTeam ? (
+              <Badge variant="default" className="gap-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700">
+                <Users className="h-3 w-3" />
+                @team:{selectedTeam.name}
+                <button
+                  type="button"
+                  onClick={clearAllTargets}
+                  className="ml-0.5 hover:text-primary-foreground/80 transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ) : isAllSelected ? (
               <Badge variant="default" className="gap-1 text-xs font-medium bg-primary/90 hover:bg-primary">
                 @all ({instances.length})
                 <button
@@ -347,17 +412,19 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
                 </Badge>
               ))
             )}
-            <Button
-              type="button"
-              variant={pendingNewSession ? 'secondary' : 'ghost'}
-              size="sm"
-              className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={handleNewSession}
-              title="Start a new session (reset context)"
-            >
-              <RotateCcw className="h-3 w-3" />
-              {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
-            </Button>
+            {!selectedTeam && (
+              <Button
+                type="button"
+                variant={pendingNewSession ? 'secondary' : 'ghost'}
+                size="sm"
+                className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={handleNewSession}
+                title="Start a new session (reset context)"
+              >
+                <RotateCcw className="h-3 w-3" />
+                {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
+              </Button>
+            )}
           </div>
         )}
 
@@ -380,11 +447,13 @@ export function TaskInput({ instances, onDispatch }: TaskInputProps) {
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={
-              targetInstances.length > 0
-                ? pendingNewSession
-                  ? `New session — send message to ${targetInstances.length} instance(s)...`
-                  : `Send task to ${targetInstances.length} instance(s)... (type @ to add more)`
-                : 'Type @ to select instance(s)...'
+              selectedTeam
+                ? `Send goal to team "${selectedTeam.name}"...`
+                : targetInstances.length > 0
+                  ? pendingNewSession
+                    ? `New session — send message to ${targetInstances.length} instance(s)...`
+                    : `Send task to ${targetInstances.length} instance(s)... (type @ to add more)`
+                  : 'Type @ to select instance(s) or team...'
             }
             rows={1}
             className="flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm leading-5 placeholder:text-muted-foreground focus:outline-none min-h-[36px] max-h-[200px] scrollbar-thin"

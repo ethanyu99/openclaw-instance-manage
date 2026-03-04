@@ -1,21 +1,31 @@
-import type { Instance, InstancePublic, TaskSummary } from '../../shared/types';
+import type { Instance, InstancePublic, TaskSummary, Team, TeamPublic, ClawRole, TeamMemberSlot } from '../../shared/types';
 import { v4 as uuid } from 'uuid';
 import {
   loadInstances,
   loadTasks,
+  loadTeams,
+  loadRoles,
   saveInstance,
   deleteInstanceFromDB,
   saveTask,
+  saveTeam,
+  deleteTeamFromDB,
+  saveRole,
+  deleteRolesByTeam,
 } from './persistence';
 
 let instances: Map<string, Instance> = new Map();
 let tasks: Map<string, TaskSummary> = new Map();
+let teams: Map<string, Team> = new Map();
+let roles: Map<string, ClawRole> = new Map();
+const rolesByTeam: Map<string, string[]> = new Map();
 const tasksByInstance: Map<string, string[]> = new Map();
 const sessionKeys: Map<string, string> = new Map();
 
 function toPublic(inst: Instance): InstancePublic {
   const { apiKey, ...rest } = inst;
-  return { ...rest, hasToken: !!inst.token };
+  const role = inst.roleId ? roles.get(inst.roleId) : undefined;
+  return { ...rest, hasToken: !!inst.token, role };
 }
 
 function persistInstance(instance: Instance) {
@@ -31,8 +41,12 @@ function persistTask(task: TaskSummary) {
 }
 
 export async function initStore() {
+  teams = await loadTeams();
+  roles = await loadRoles();
   instances = await loadInstances();
   tasks = await loadTasks();
+
+  await rebuildTeamIndexes();
 
   for (const id of instances.keys()) {
     tasksByInstance.set(id, []);
@@ -53,7 +67,35 @@ export async function initStore() {
     }
   }
 
-  console.log(`[store] Loaded ${instances.size} instances, ${tasks.size} tasks from database`);
+  console.log(`[store] Loaded ${teams.size} teams, ${roles.size} roles, ${instances.size} instances, ${tasks.size} tasks from database`);
+}
+
+async function rebuildTeamIndexes() {
+  const { getPool } = require('./db') as typeof import('./db');
+  const pool = getPool();
+  rolesByTeam.clear();
+
+  try {
+    const { rows } = await pool.query('SELECT id, team_id FROM roles');
+    for (const row of rows) {
+      const list = rolesByTeam.get(row.team_id) || [];
+      list.push(row.id);
+      rolesByTeam.set(row.team_id, list);
+    }
+  } catch (err) {
+    console.error('[store] Failed to rebuild role indexes:', err);
+  }
+
+  // Rebuild team members from instances
+  for (const team of teams.values()) {
+    const teamRoleIds = rolesByTeam.get(team.id) || [];
+    team.members = teamRoleIds.map(roleId => {
+      const boundInstance = Array.from(instances.values()).find(
+        i => i.teamId === team.id && i.roleId === roleId
+      );
+      return { roleId, instanceId: boundInstance?.id };
+    });
+  }
 }
 
 export const store = {
@@ -101,7 +143,7 @@ export const store = {
     );
   },
 
-  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token' | 'sandboxId'>>): InstancePublic | undefined {
+  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token' | 'sandboxId' | 'teamId' | 'roleId'>>): InstancePublic | undefined {
     const instance = instances.get(id);
     if (!instance) return undefined;
 
@@ -114,7 +156,8 @@ export const store = {
     instances.set(id, updated);
 
     const hasConfigChange = data.name !== undefined || data.endpoint !== undefined
-      || data.description !== undefined || data.token !== undefined || data.sandboxId !== undefined;
+      || data.description !== undefined || data.token !== undefined || data.sandboxId !== undefined
+      || data.teamId !== undefined || data.roleId !== undefined;
     if (hasConfigChange) {
       persistInstance(updated);
     }
@@ -233,5 +276,143 @@ export const store = {
 
   getAllInstancesRaw(): Instance[] {
     return Array.from(instances.values());
+  },
+
+  // ── Team operations ──────────────────
+
+  getTeams(ownerId: string): TeamPublic[] {
+    return Array.from(teams.values())
+      .filter(t => t.ownerId === ownerId)
+      .map(t => this.toTeamPublic(t));
+  },
+
+  getTeam(ownerId: string, id: string): TeamPublic | undefined {
+    const team = teams.get(id);
+    if (!team || team.ownerId !== ownerId) return undefined;
+    return this.toTeamPublic(team);
+  },
+
+  toTeamPublic(team: Team): TeamPublic {
+    const teamRoleIds = rolesByTeam.get(team.id) || [];
+    const teamRoles = teamRoleIds
+      .map(rid => roles.get(rid))
+      .filter((r): r is ClawRole => !!r);
+    // Refresh members with current instance bindings
+    team.members = teamRoleIds.map(roleId => {
+      const boundInstance = Array.from(instances.values()).find(
+        i => i.teamId === team.id && i.roleId === roleId
+      );
+      return { roleId, instanceId: boundInstance?.id };
+    });
+    return { ...team, roles: teamRoles };
+  },
+
+  createTeam(ownerId: string, data: { name: string; description: string }, roleDefs: Omit<ClawRole, 'id'>[]): TeamPublic {
+    const teamId = uuid();
+    const now = new Date().toISOString();
+    const team: Team = {
+      id: teamId,
+      ownerId,
+      name: data.name,
+      description: data.description,
+      members: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    teams.set(teamId, team);
+    saveTeam(team).catch(err => console.error('[store] Failed to persist team:', err));
+
+    const createdRoles: ClawRole[] = [];
+    const teamRoleIds: string[] = [];
+    for (const def of roleDefs) {
+      const roleId = uuid();
+      const role: ClawRole = { id: roleId, ...def };
+      roles.set(roleId, role);
+      teamRoleIds.push(roleId);
+      createdRoles.push(role);
+      saveRole(role, teamId).catch(err => console.error('[store] Failed to persist role:', err));
+    }
+    rolesByTeam.set(teamId, teamRoleIds);
+
+    team.members = teamRoleIds.map(roleId => ({ roleId }));
+    return { ...team, roles: createdRoles };
+  },
+
+  updateTeam(id: string, data: Partial<Pick<Team, 'name' | 'description'>>): TeamPublic | undefined {
+    const team = teams.get(id);
+    if (!team) return undefined;
+    const updated = { ...team, ...data, updatedAt: new Date().toISOString() };
+    teams.set(id, updated);
+    saveTeam(updated).catch(err => console.error('[store] Failed to persist team:', err));
+    return this.toTeamPublic(updated);
+  },
+
+  deleteTeam(id: string): boolean {
+    const team = teams.get(id);
+    if (!team) return false;
+
+    // Unbind instances from this team
+    for (const inst of instances.values()) {
+      if (inst.teamId === id) {
+        const updated = { ...inst, teamId: undefined, roleId: undefined, updatedAt: new Date().toISOString() };
+        instances.set(inst.id, updated);
+        saveInstance(updated).catch(err => console.error('[store] Failed to persist instance:', err));
+      }
+    }
+
+    // Remove roles
+    const teamRoleIds = rolesByTeam.get(id) || [];
+    for (const rid of teamRoleIds) {
+      roles.delete(rid);
+    }
+    rolesByTeam.delete(id);
+    deleteRolesByTeam(id).catch(err => console.error('[store] Failed to delete roles:', err));
+
+    teams.delete(id);
+    deleteTeamFromDB(id).catch(err => console.error('[store] Failed to delete team:', err));
+    return true;
+  },
+
+  isTeamNameTaken(ownerId: string, name: string, excludeId?: string): boolean {
+    return Array.from(teams.values()).some(
+      t => t.ownerId === ownerId && t.name === name && t.id !== excludeId
+    );
+  },
+
+  // ── Role operations ──────────────────
+
+  getRole(id: string): ClawRole | undefined {
+    return roles.get(id);
+  },
+
+  getRolesByTeam(teamId: string): ClawRole[] {
+    const ids = rolesByTeam.get(teamId) || [];
+    return ids.map(id => roles.get(id)).filter((r): r is ClawRole => !!r);
+  },
+
+  // ── Instance-Team binding ────────────
+
+  bindInstanceToRole(instanceId: string, teamId: string, roleId: string): InstancePublic | undefined {
+    const inst = instances.get(instanceId);
+    if (!inst) return undefined;
+    const team = teams.get(teamId);
+    if (!team) return undefined;
+    const role = roles.get(roleId);
+    if (!role) return undefined;
+
+    // Unbind any other instance from this role in this team
+    for (const other of instances.values()) {
+      if (other.teamId === teamId && other.roleId === roleId && other.id !== instanceId) {
+        const updated = { ...other, teamId: undefined, roleId: undefined, updatedAt: new Date().toISOString() };
+        instances.set(other.id, updated);
+        saveInstance(updated).catch(err => console.error('[store] Failed to persist instance:', err));
+      }
+    }
+
+    return this.updateInstance(instanceId, { teamId, roleId });
+  },
+
+  unbindInstanceFromTeam(instanceId: string): InstancePublic | undefined {
+    return this.updateInstance(instanceId, { teamId: undefined, roleId: undefined });
   },
 };
