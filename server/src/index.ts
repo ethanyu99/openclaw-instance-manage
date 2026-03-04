@@ -13,6 +13,8 @@ import { taskRouter } from './routes/tasks';
 import { uploadRouter } from './routes/upload';
 import { setupWebSocket } from './ws';
 import { authMiddleware } from './auth';
+import { initDB } from './db';
+import { initStore } from './store';
 
 const app = express();
 const server = http.createServer(app);
@@ -48,6 +50,15 @@ app.get('*', (_req, res) => {
 const wss = new WebSocketServer({ server, path: '/ws' });
 setupWebSocket(wss);
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+async function start() {
+  await initDB();
+  await initStore();
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+start().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

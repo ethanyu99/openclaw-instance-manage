@@ -1,23 +1,59 @@
 import type { Instance, InstancePublic, TaskSummary } from '../../shared/types';
 import { v4 as uuid } from 'uuid';
-import { loadInstances, saveInstances } from './persistence';
+import {
+  loadInstances,
+  loadTasks,
+  saveInstance,
+  deleteInstanceFromDB,
+  saveTask,
+} from './persistence';
 
-const instances: Map<string, Instance> = loadInstances();
-const tasks: Map<string, TaskSummary> = new Map();
+let instances: Map<string, Instance> = new Map();
+let tasks: Map<string, TaskSummary> = new Map();
 const tasksByInstance: Map<string, string[]> = new Map();
 const sessionKeys: Map<string, string> = new Map();
-
-for (const id of instances.keys()) {
-  tasksByInstance.set(id, []);
-}
-
-function persist() {
-  saveInstances(instances);
-}
 
 function toPublic(inst: Instance): InstancePublic {
   const { apiKey, ...rest } = inst;
   return { ...rest, hasToken: !!inst.token };
+}
+
+function persistInstance(instance: Instance) {
+  saveInstance(instance).catch(err =>
+    console.error('[store] Failed to persist instance:', err)
+  );
+}
+
+function persistTask(task: TaskSummary) {
+  saveTask(task).catch(err =>
+    console.error('[store] Failed to persist task:', err)
+  );
+}
+
+export async function initStore() {
+  instances = await loadInstances();
+  tasks = await loadTasks();
+
+  for (const id of instances.keys()) {
+    tasksByInstance.set(id, []);
+  }
+  for (const task of tasks.values()) {
+    const list = tasksByInstance.get(task.instanceId);
+    if (list) {
+      list.push(task.id);
+    }
+  }
+
+  for (const task of tasks.values()) {
+    if (task.status === 'running' || task.status === 'pending') {
+      task.status = 'failed';
+      task.summary = (task.summary || '') + '\n[Interrupted by server restart]';
+      task.updatedAt = new Date().toISOString();
+      persistTask(task);
+    }
+  }
+
+  console.log(`[store] Loaded ${instances.size} instances, ${tasks.size} tasks from database`);
 }
 
 export const store = {
@@ -55,7 +91,7 @@ export const store = {
     };
     instances.set(id, instance);
     tasksByInstance.set(id, []);
-    persist();
+    persistInstance(instance);
     return toPublic(instance);
   },
 
@@ -77,8 +113,10 @@ export const store = {
     const updated = { ...instance, ...updateData };
     instances.set(id, updated);
 
-    if (data.name !== undefined || data.endpoint !== undefined || data.description !== undefined || data.token !== undefined) {
-      persist();
+    const hasConfigChange = data.name !== undefined || data.endpoint !== undefined
+      || data.description !== undefined || data.token !== undefined || data.sandboxId !== undefined;
+    if (hasConfigChange) {
+      persistInstance(updated);
     }
     return toPublic(updated);
   },
@@ -86,7 +124,11 @@ export const store = {
   deleteInstance(id: string): boolean {
     tasksByInstance.delete(id);
     const deleted = instances.delete(id);
-    if (deleted) persist();
+    if (deleted) {
+      deleteInstanceFromDB(id).catch(err =>
+        console.error('[store] Failed to delete instance from DB:', err)
+      );
+    }
     return deleted;
   },
 
@@ -124,6 +166,7 @@ export const store = {
       instances.set(instanceId, { ...instance, currentTask: task, updatedAt: now });
     }
 
+    persistTask(task);
     return task;
   },
 
@@ -154,6 +197,7 @@ export const store = {
       }
     }
 
+    persistTask(updated);
     return updated;
   },
 
