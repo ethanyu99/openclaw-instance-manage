@@ -383,7 +383,7 @@ export function setupWebSocket(wss: WebSocketServer) {
         if (instance.token) {
           headers['Authorization'] = `Bearer ${instance.token}`;
         }
-        const response = await fetch(`${baseUrl}/api/health`, {
+        const response = await fetch(`${baseUrl}/`, {
           signal: controller.signal,
           headers,
         });

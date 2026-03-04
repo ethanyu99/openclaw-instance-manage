@@ -18,18 +18,26 @@ function loadOpenClawConfigTemplate(): Record<string, unknown> {
   return JSON.parse(raw);
 }
 
-function generateOpenClawConfig(apiKey: string, gatewayToken: string): Record<string, unknown> {
-  const config = loadOpenClawConfigTemplate();
-
-  const models = config.models as Record<string, unknown> | undefined;
-  const providers = models?.providers as Record<string, Record<string, unknown>> | undefined;
-  if (providers) {
-    for (const provider of Object.values(providers)) {
-      if (provider.apiKey === API_KEY_PLACEHOLDER) {
-        provider.apiKey = apiKey;
-      }
-    }
+function replacePlaceholder(obj: unknown, placeholder: string, value: string): unknown {
+  if (typeof obj === 'string') {
+    return obj === placeholder ? value : obj;
   }
+  if (Array.isArray(obj)) {
+    return obj.map(item => replacePlaceholder(item, placeholder, value));
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      result[k] = replacePlaceholder(v, placeholder, value);
+    }
+    return result;
+  }
+  return obj;
+}
+
+function generateOpenClawConfig(apiKey: string, gatewayToken: string): Record<string, unknown> {
+  const template = loadOpenClawConfigTemplate();
+  const config = replacePlaceholder(template, API_KEY_PLACEHOLDER, apiKey) as Record<string, unknown>;
 
   config.gateway = {
     mode: 'local',

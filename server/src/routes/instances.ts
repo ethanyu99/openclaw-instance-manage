@@ -139,7 +139,7 @@ instanceRouter.post('/:id/health', async (req, res) => {
     if (instance.token) {
       headers['Authorization'] = `Bearer ${instance.token}`;
     }
-    const response = await fetch(`${baseUrl}/api/health`, {
+    const response = await fetch(`${baseUrl}/`, {
       signal: controller.signal,
       headers,
     });

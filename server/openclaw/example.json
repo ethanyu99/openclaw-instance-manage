@@ -11,10 +11,7 @@
                         "id": "pa/claude-opus-4-6",
                         "name": "Claude Opus 4.6",
                         "reasoning": true,
-                        "input": [
-                            "text",
-                            "image"
-                        ],
+                        "input": ["text", "image"],
                         "cost": {
                             "input": 0,
                             "output": 0,
@@ -28,10 +25,7 @@
                         "id": "pa/claude-sonnet-4-6",
                         "name": "Claude Sonnet 4.6",
                         "reasoning": true,
-                        "input": [
-                            "text",
-                            "image"
-                        ],
+                        "input": ["text", "image"],
                         "cost": {
                             "input": 0,
                             "output": 0,
@@ -52,6 +46,20 @@
                 "fallbacks": [
                     "novita/pa/claude-sonnet-4-6"
                 ]
+            },
+            "memorySearch": {
+                "enabled": true,
+                "provider": "openai",
+                "model": "pa/text-embedding-3-large",
+                "remote": {
+                    "baseUrl": "https://api.novita.ai/v3/openai",
+                    "apiKey": "NOVITA_API_KEY"
+                },
+                "sources": ["memory", "sessions"],
+                "sync": {
+                    "onSessionStart": true,
+                    "watch": true
+                }
             }
         }
     }
