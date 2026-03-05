@@ -9,7 +9,7 @@ interface TaskInputProps {
   instances: InstancePublic[];
   teams?: TeamPublic[];
   onDispatch: (instanceId: string, content: string, instanceName: string, newSession?: boolean, imageUrls?: string[]) => void;
-  onTeamDispatch?: (teamId: string, content: string) => void;
+  onTeamDispatch?: (teamId: string, content: string, newSession?: boolean) => void;
 }
 
 interface PastedImage {
@@ -186,8 +186,9 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch }:
     // Team mode
     if (selectedTeam) {
       if (!content) return;
-      onTeamDispatch?.(selectedTeam.id, content);
+      onTeamDispatch?.(selectedTeam.id, content, pendingNewSession || undefined);
       setValue('');
+      setPendingNewSession(false);
       return;
     }
 
@@ -412,19 +413,17 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch }:
                 </Badge>
               ))
             )}
-            {!selectedTeam && (
-              <Button
-                type="button"
-                variant={pendingNewSession ? 'secondary' : 'ghost'}
-                size="sm"
-                className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={handleNewSession}
-                title="Start a new session (reset context)"
-              >
-                <RotateCcw className="h-3 w-3" />
-                {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant={pendingNewSession ? 'secondary' : 'ghost'}
+              size="sm"
+              className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={handleNewSession}
+              title="Start a new session (reset context)"
+            >
+              <RotateCcw className="h-3 w-3" />
+              {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
+            </Button>
           </div>
         )}
 

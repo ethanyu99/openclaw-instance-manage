@@ -10,20 +10,23 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, Users, Monitor } from 'lucide-react';
-import { getSessions, clearSessions, deleteSession, deleteTeamExecution, clearTeamExecutions, type SessionHistory, type TeamExecutionHistory } from '@/lib/storage';
+import { Trash2, Monitor, Zap } from 'lucide-react';
+import { getSessions, clearSessions, deleteSession, deleteExecution, clearExecutions, type SessionHistory, type ExecutionHistory } from '@/lib/storage';
+import type { TeamExecutionHistory } from '@/lib/storage';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 
-type HistoryTab = 'sessions' | 'teams';
+type HistoryTab = 'sessions' | 'executions';
 
 interface HistoryDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamExecutions?: TeamExecutionHistory[];
   onViewTeamExecution?: (exec: TeamExecutionHistory) => void;
+  executions?: ExecutionHistory[];
+  onViewExecution?: (exec: ExecutionHistory) => void;
 }
 
-export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewTeamExecution }: HistoryDrawerProps) {
+export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecution }: HistoryDrawerProps) {
   const [sessions, setSessions] = useState<SessionHistory[]>([]);
   const [selectedSession, setSelectedSession] = useState<SessionHistory | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -45,8 +48,8 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
       clearSessions();
       setSessions([]);
     } else {
-      if (!confirm('清除所有团队执行历史？')) return;
-      clearTeamExecutions();
+      if (!confirm('清除所有执行历史？')) return;
+      clearExecutions();
     }
   };
 
@@ -54,11 +57,6 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
     e.stopPropagation();
     deleteSession(sessionKey);
     refresh();
-  };
-
-  const handleDeleteTeamExecution = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    deleteTeamExecution(id);
   };
 
   const handleSessionClick = (session: SessionHistory) => {
@@ -84,15 +82,15 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
     return acc;
   }, {});
 
-  // Group team executions by date
-  const teamGrouped = teamExecutions.reduce<Record<string, TeamExecutionHistory[]>>((acc, exec) => {
+  // Group autonomous executions by date
+  const execGrouped = executions.reduce<Record<string, ExecutionHistory[]>>((acc, exec) => {
     const date = new Date(exec.createdAt).toLocaleDateString();
     if (!acc[date]) acc[date] = [];
     acc[date].push(exec);
     return acc;
   }, {});
 
-  const currentCount = tab === 'sessions' ? sessions.length : teamExecutions.length;
+  const currentCount = tab === 'sessions' ? sessions.length : executions.length;
 
   return (
     <>
@@ -116,7 +114,7 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
               )}
             </div>
             <SheetDescription className="font-mono text-xs mt-1">
-              {currentCount} 条{tab === 'sessions' ? '会话' : '团队执行'}记录
+              {currentCount} 条{tab === 'sessions' ? '会话' : '执行'}记录
             </SheetDescription>
           </SheetHeader>
 
@@ -138,14 +136,14 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
               <button
                 type="button"
                 className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold tracking-tight transition-all ${
-                  tab === 'teams'
+                  tab === 'executions'
                     ? 'bg-card text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
-                onClick={() => setTab('teams')}
+                onClick={() => setTab('executions')}
               >
-                <Users className="h-3 w-3" />
-                团队 ({teamExecutions.length})
+                <Zap className="h-3 w-3" />
+                执行 ({executions.length})
               </button>
             </div>
           </div>
@@ -153,7 +151,7 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
           <Separator />
 
           <ScrollArea className="flex-1">
-            {tab === 'sessions' ? (
+            {tab === 'sessions' && (
               sessions.length === 0 ? (
                 <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
                   暂无会话历史
@@ -221,14 +219,16 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
                   ))}
                 </div>
               )
-            ) : (
-              teamExecutions.length === 0 ? (
+            )}
+
+            {tab === 'executions' && (
+              executions.length === 0 ? (
                 <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
-                  暂无团队执行历史
+                  暂无执行历史
                 </div>
               ) : (
                 <div className="p-2">
-                  {Object.entries(teamGrouped).map(([date, dateExecutions]) => (
+                  {Object.entries(execGrouped).map(([date, dateExecs]) => (
                     <div key={date} className="mb-4">
                       <div className="flex items-center gap-2 px-3 py-1.5 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
                         <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider">
@@ -237,25 +237,25 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
                         <div className="flex-1 h-px bg-border/50" />
                       </div>
                       <div className="space-y-1">
-                        {dateExecutions.map(exec => (
+                        {dateExecs.map(exec => (
                           <div
                             key={exec.id}
                             className="w-full text-left px-3 py-2.5 rounded-sm hover:bg-muted/50 border border-transparent hover:border-border transition-colors group relative cursor-pointer flex flex-col gap-1.5"
-                            onClick={() => onViewTeamExecution?.(exec)}
+                            onClick={() => onViewExecution?.(exec)}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-center gap-2 overflow-hidden">
-                                <div className="w-5 h-5 rounded bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
-                                  <Users className="h-3 w-3 text-violet-600 dark:text-violet-400" />
+                                <div className="w-5 h-5 rounded bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                                  <Zap className="h-3 w-3 text-blue-600 dark:text-blue-400" />
                                 </div>
                                 <span className="text-xs font-semibold text-foreground truncate">
                                   {exec.teamName}
                                 </span>
                                 <Badge
-                                  variant={exec.status === 'completed' ? 'secondary' : exec.status === 'failed' ? 'destructive' : 'default'}
+                                  variant={exec.status === 'completed' ? 'secondary' : exec.status === 'failed' ? 'destructive' : exec.status === 'timeout' ? 'outline' : 'default'}
                                   className="text-[9px] font-mono h-4 px-1 rounded-sm shrink-0"
                                 >
-                                  {exec.steps.length} 步
+                                  {exec.turns.length} 轮
                                 </Badge>
                               </div>
                               <div className="flex items-center gap-2 shrink-0 h-4">
@@ -266,32 +266,23 @@ export function HistoryDrawer({ open, onOpenChange, teamExecutions = [], onViewT
                                   variant="ghost"
                                   size="icon"
                                   className="h-5 w-5 text-muted-foreground hover:text-destructive hidden group-hover:flex -my-0.5"
-                                  onClick={(e) => handleDeleteTeamExecution(e, exec.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteExecution(exec.id);
+                                  }}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
                               </div>
                             </div>
                             <p className="text-[11px] truncate text-muted-foreground">
-                              <span className="text-violet-500 mr-1.5">❯</span>
+                              <span className="text-blue-500 mr-1.5">❯</span>
                               {exec.goal}
                             </p>
-                            {exec.steps.length > 0 && (
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {exec.steps.map(s => (
-                                  <Badge
-                                    key={s.step}
-                                    variant="outline"
-                                    className={`text-[9px] px-1.5 py-0 ${
-                                      s.status === 'completed' ? 'text-emerald-600 border-emerald-200' :
-                                      s.status === 'failed' ? 'text-red-500 border-red-200' :
-                                      'text-muted-foreground'
-                                    }`}
-                                  >
-                                    {s.role}
-                                  </Badge>
-                                ))}
-                              </div>
+                            {exec.summary && (
+                              <p className="text-[10px] text-muted-foreground/70 truncate">
+                                {exec.summary.slice(0, 80)}
+                              </p>
                             )}
                           </div>
                         ))}

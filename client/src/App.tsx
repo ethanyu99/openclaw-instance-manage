@@ -8,11 +8,13 @@ import { CreateTeamDialog } from '@/components/CreateTeamDialog';
 import { TeamCard } from '@/components/TeamCard';
 import { TeamExecutionDetailDialog } from '@/components/TeamExecutionDetailDialog';
 import { ExecutionPanel } from '@/components/ExecutionPanel';
+import { ExecutionReportDialog } from '@/components/ExecutionReportDialog';
 import { useInstanceManager } from '@/hooks/useInstanceManager';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { fetchTeams } from '@/lib/api';
 import type { TeamPublic } from '@shared/types';
 import type { TeamExecutionHistory } from '@/lib/storage';
+import type { ExecutionHistory } from '@/lib/storage';
 
 type ViewTab = 'instances' | 'teams';
 
@@ -30,6 +32,8 @@ export default function App() {
   const [teams, setTeams] = useState<TeamPublic[]>([]);
   const [selectedExecution, setSelectedExecution] = useState<TeamExecutionHistory | null>(null);
   const [executionDetailOpen, setExecutionDetailOpen] = useState(false);
+  const [selectedAutoExecution, setSelectedAutoExecution] = useState<ExecutionHistory | null>(null);
+  const [autoExecDetailOpen, setAutoExecDetailOpen] = useState(false);
 
   const loadTeams = useCallback(async () => {
     try {
@@ -152,7 +156,10 @@ export default function App() {
           activeExecution={activeExecution}
           latestExecution={executions[0]}
           onClear={clearExecutionLogs}
-          onViewDetail={() => {}}
+          onViewDetail={(exec: ExecutionHistory) => {
+            setSelectedAutoExecution(exec);
+            setAutoExecDetailOpen(true);
+          }}
         />
       )}
 
@@ -166,12 +173,23 @@ export default function App() {
           setSelectedExecution(exec);
           setExecutionDetailOpen(true);
         }}
+        executions={executions}
+        onViewExecution={(exec) => {
+          setSelectedAutoExecution(exec);
+          setAutoExecDetailOpen(true);
+        }}
       />
 
       <TeamExecutionDetailDialog
         execution={selectedExecution}
         open={executionDetailOpen}
         onOpenChange={setExecutionDetailOpen}
+      />
+
+      <ExecutionReportDialog
+        execution={selectedAutoExecution}
+        open={autoExecDetailOpen}
+        onOpenChange={setAutoExecDetailOpen}
       />
     </div>
   );

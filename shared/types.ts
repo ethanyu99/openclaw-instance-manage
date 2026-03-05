@@ -257,6 +257,7 @@ export interface TaskDispatchPayload {
 export interface TeamDispatchPayload {
   teamId: string;
   content: string;
+  newSession?: boolean;
 }
 
 export interface TaskStreamPayload {

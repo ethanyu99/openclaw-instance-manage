@@ -22,6 +22,9 @@ let roles: Map<string, ClawRole> = new Map();
 const rolesByTeam: Map<string, string[]> = new Map();
 const tasksByInstance: Map<string, string[]> = new Map();
 const sessionKeys: Map<string, string> = new Map();
+const teamSessions: Map<string, string> = new Map();
+const MAX_TEAM_HISTORY = 10;
+const teamExecutionHistory: Map<string, Array<{ goal: string; summary: string; completedAt: string }>> = new Map();
 
 function toPublic(inst: Instance): InstancePublic {
   const { apiKey, ...rest } = inst;
@@ -482,5 +485,36 @@ export const store = {
 
   unbindInstanceFromTeam(instanceId: string): InstancePublic | undefined {
     return this.updateInstance(instanceId, { teamId: undefined, roleId: undefined });
+  },
+
+  // ── Team session management ─────────
+
+  getTeamSessionKey(ownerId: string, teamId: string, instanceId: string): string {
+    const teamKey = `${ownerId}:${teamId}`;
+    let prefix = teamSessions.get(teamKey);
+    if (!prefix) {
+      prefix = `team-${ownerId}-${teamId}`;
+      teamSessions.set(teamKey, prefix);
+    }
+    return `${prefix}-${instanceId}`;
+  },
+
+  resetTeamSession(ownerId: string, teamId: string): void {
+    const teamKey = `${ownerId}:${teamId}`;
+    teamSessions.set(teamKey, `team-${ownerId}-${teamId}-${Date.now()}`);
+  },
+
+  addTeamExecutionSummary(ownerId: string, teamId: string, goal: string, summary: string): void {
+    const key = `${ownerId}:${teamId}`;
+    const history = teamExecutionHistory.get(key) || [];
+    history.push({ goal, summary, completedAt: new Date().toISOString() });
+    if (history.length > MAX_TEAM_HISTORY) {
+      history.splice(0, history.length - MAX_TEAM_HISTORY);
+    }
+    teamExecutionHistory.set(key, history);
+  },
+
+  getTeamExecutionSummaries(ownerId: string, teamId: string): Array<{ goal: string; summary: string; completedAt: string }> {
+    return teamExecutionHistory.get(`${ownerId}:${teamId}`) || [];
   },
 };

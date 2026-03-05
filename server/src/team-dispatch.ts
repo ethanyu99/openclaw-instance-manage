@@ -48,6 +48,7 @@ function buildTurnPrompt(
   turn: Turn,
   execution: Execution,
   team: TeamPublic,
+  previousExecutions: Array<{ goal: string; summary: string; completedAt: string }> = [],
 ): string {
   const role = team.roles.find(r => r.name === turn.role)!;
   const isLead = role.isLead;
@@ -61,6 +62,15 @@ function buildTurnPrompt(
   const upstreamContext = buildUpstreamContext(turn, execution);
 
   const actionInstructions = buildActionInstructions(isLead, team);
+
+  let historySection = '';
+  if (isLead && previousExecutions.length > 0 && execution.turns.length === 0) {
+    const recent = previousExecutions.slice(-5);
+    const items = recent.map((e, i) =>
+      `${i + 1}. **目标**：${e.goal.slice(0, 100)}\n   **结果**：${e.summary.slice(0, 300)}\n   **时间**：${e.completedAt}`
+    ).join('\n\n');
+    historySection = `\n## 之前的执行记录\n\n以下是本团队近期完成的任务，你可以参考上下文：\n\n${items}\n`;
+  }
 
   return `# 系统说明
 
@@ -76,7 +86,7 @@ ${memberList}
 ## 团队目标
 
 ${execution.goal}
-
+${historySection}
 ## 当前执行进展
 
 ${executionSummary}
@@ -293,6 +303,7 @@ async function callInstance(
   broadcastToOwner: BroadcastFn,
   executionId: string,
   turn: Turn,
+  sessionKey: string,
 ): Promise<string> {
   const baseUrl = toHttpBase(instance.endpoint);
   const url = `${baseUrl}/v1/responses`;
@@ -305,14 +316,11 @@ async function callInstance(
     headers['Authorization'] = `Bearer ${instance.token}`;
   }
 
-  store.resetSessionKey(ownerId, instance.id);
-  const freshSession = store.getSessionKey(ownerId, instance.id);
-
   const body = JSON.stringify({
     model: 'openclaw',
     input: content,
     stream: true,
-    user: freshSession,
+    user: sessionKey,
   });
 
   console.log(`[execution] >>> Turn ${turn.seq} [${instance.name}] role=${turn.role}`);
@@ -529,6 +537,7 @@ export async function dispatchToTeam(
   teamId: string,
   goal: string,
   broadcastToOwner: BroadcastFn,
+  newSession?: boolean,
 ) {
   const team = store.getTeam(ownerId, teamId);
   if (!team) {
@@ -562,6 +571,12 @@ export async function dispatchToTeam(
     });
     return;
   }
+
+  if (newSession) {
+    store.resetTeamSession(ownerId, teamId);
+  }
+
+  const previousExecutions = store.getTeamExecutionSummaries(ownerId, teamId);
 
   const execution: Execution = {
     id: uuid(),
@@ -670,7 +685,7 @@ export async function dispatchToTeam(
     }
 
     // Build prompt
-    const prompt = buildTurnPrompt(turn, execution, team);
+    const prompt = buildTurnPrompt(turn, execution, team, previousExecutions);
 
     // Broadcast: turn start
     turn.status = 'running';
@@ -693,7 +708,8 @@ export async function dispatchToTeam(
       const inst = ri?.instance || store.getInstanceRaw(turn.instanceId);
       if (!inst) throw new Error(`Instance not found for role "${turn.role}"`);
 
-      output = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn);
+      const sessionKey = store.getTeamSessionKey(ownerId, teamId, inst.id);
+      output = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn, sessionKey);
     } catch (err) {
       turn.status = 'failed';
       turn.completedAt = new Date().toISOString();
@@ -831,11 +847,11 @@ export async function dispatchToTeam(
       const isLeadTurn = turn.role === leadRole.name;
 
       if (isLeadTurn) {
-        // Lead with no parseable action → treat as implicit done
         execution.status = 'completed';
         execution.summary = output.slice(0, 2000);
         execution.completedAt = new Date().toISOString();
         execution.metrics = computeMetrics(execution);
+        store.addTeamExecutionSummary(ownerId, teamId, goal, execution.summary);
 
         broadcastToOwner(ownerId, {
           type: 'execution:completed',
@@ -912,11 +928,11 @@ export async function dispatchToTeam(
 
         // Avoid Lead reporting to Lead in an infinite loop
         if (targetRI.role.name === turn.role && turn.role === leadRole.name) {
-          // Lead reported to itself — treat as done
           execution.status = 'completed';
           execution.summary = action.summary;
           execution.completedAt = new Date().toISOString();
           execution.metrics = computeMetrics(execution);
+          store.addTeamExecutionSummary(ownerId, teamId, goal, action.summary);
 
           broadcastToOwner(ownerId, {
             type: 'execution:completed',
@@ -985,6 +1001,7 @@ export async function dispatchToTeam(
           execution.summary = action.summary;
           execution.completedAt = new Date().toISOString();
           execution.metrics = computeMetrics(execution);
+          store.addTeamExecutionSummary(ownerId, teamId, goal, action.summary);
 
           broadcastToOwner(ownerId, {
             type: 'execution:completed',

@@ -455,11 +455,11 @@ export function useInstanceManager() {
 
   const activeExecution = activeExecutionRef.current;
 
-  const dispatchTeamTask = useCallback((teamId: string, content: string) => {
+  const dispatchTeamTask = useCallback((teamId: string, content: string, newSession?: boolean) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({
       type: 'team:dispatch',
-      payload: { teamId, content },
+      payload: { teamId, content, newSession: newSession || undefined },
       timestamp: new Date().toISOString(),
     }));
   }, []);

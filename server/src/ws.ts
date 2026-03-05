@@ -363,8 +363,8 @@ export function setupWebSocket(wss: WebSocketServer) {
         }
 
         if (msg.type === 'team:dispatch') {
-          const { teamId, content } = msg.payload as TeamDispatchPayload;
-          dispatchToTeam(userId, teamId, content, broadcastToOwner);
+          const { teamId, content, newSession } = msg.payload as TeamDispatchPayload;
+          dispatchToTeam(userId, teamId, content, broadcastToOwner, newSession);
         }
       } catch {
         // ignore parse errors
