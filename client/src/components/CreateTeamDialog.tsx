@@ -10,11 +10,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Users, Star, X } from 'lucide-react';
 import { fetchTeamTemplates, createTeam } from '@/lib/api';
-import type { TeamTemplate, ClawRole } from '@shared/types';
+import type { TeamTemplate } from '@shared/types';
 
 interface CreateTeamDialogProps {
   onCreated: () => void;

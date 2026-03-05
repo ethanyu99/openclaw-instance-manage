@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { store } from '../store';
 import { TEAM_TEMPLATES } from '../team-templates';
+import type { ClawRole } from '../../../shared/types';
 
 export const teamRouter = Router();
 
@@ -144,7 +145,7 @@ teamRouter.put('/:id/roles/:roleId', (req, res) => {
     }
   }
 
-  const updateData: Partial<Omit<import('../../shared/types').ClawRole, 'id'>> = {};
+  const updateData: Partial<Omit<ClawRole, 'id'>> = {};
   if (name !== undefined) updateData.name = name.trim();
   if (description !== undefined) updateData.description = description.trim();
   if (capabilities !== undefined) updateData.capabilities = capabilities;
