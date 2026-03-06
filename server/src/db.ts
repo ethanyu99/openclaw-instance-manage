@@ -113,7 +113,52 @@ async function migrate() {
     );
   `);
 
-  // Step 6: Create indexes (after all columns exist)
+  // Step 6: Sessions table
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id VARCHAR(255) PRIMARY KEY,
+      owner_id VARCHAR(255) NOT NULL,
+      instance_id UUID NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+      instance_name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Step 7: Add session_key and output to tasks
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS session_key VARCHAR(255);
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
+  await p.query(`
+    DO $$ BEGIN
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS output TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
+
+  // Step 8: Executions table
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS executions (
+      id UUID PRIMARY KEY,
+      owner_id VARCHAR(255) NOT NULL,
+      team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      team_name VARCHAR(255) NOT NULL,
+      goal TEXT NOT NULL,
+      summary TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'running',
+      turns JSONB DEFAULT '[]',
+      edges JSONB DEFAULT '[]',
+      graph JSONB,
+      metrics JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );
+  `);
+
+  // Step 9: Create indexes (after all columns exist)
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_teams_owner_id ON teams(owner_id);
     CREATE INDEX IF NOT EXISTS idx_roles_team_id ON roles(team_id);
@@ -125,6 +170,11 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_share_tokens_owner ON share_tokens(owner_id);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_owner_id ON sessions(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_instance_id ON sessions(instance_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_session_key ON tasks(session_key);
+    CREATE INDEX IF NOT EXISTS idx_executions_owner_id ON executions(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_executions_team_id ON executions(team_id);
   `);
 
   console.log('[db] Migration complete');

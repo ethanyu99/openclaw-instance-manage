@@ -69,8 +69,9 @@ export interface TaskSummary {
   ownerId: string;
   instanceId: string;
   content: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   summary?: string;
+  sessionKey?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -177,11 +178,17 @@ export interface DoneAction {
   summary: string;
 }
 
+export interface MultiDelegateAction {
+  type: 'multi_delegate';
+  tasks: Array<{ to: string; task: string; context: 'full' | 'summary' | 'none' }>;
+}
+
 export type TurnAction =
   | DelegateAction
   | ReportAction
   | FeedbackAction
-  | DoneAction;
+  | DoneAction
+  | MultiDelegateAction;
 
 export interface GraphNode {
   id: string;
@@ -246,6 +253,8 @@ export type WSMessageType =
   | 'task:stream'
   | 'task:complete'
   | 'task:error'
+  | 'task:cancel'
+  | 'task:cancelled'
   | 'instance:status'
   | 'team:dispatch'
   | 'team:step'
@@ -259,7 +268,9 @@ export type WSMessageType =
   | 'execution:edge_created'
   | 'execution:warning'
   | 'execution:completed'
-  | 'execution:timeout';
+  | 'execution:timeout'
+  | 'execution:cancel'
+  | 'execution:cancelled';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -283,6 +294,7 @@ export interface TeamDispatchPayload {
   teamId: string;
   content: string;
   newSession?: boolean;
+  config?: Partial<ExecutionConfig>;
 }
 
 export interface TaskStreamPayload {
@@ -351,6 +363,53 @@ export interface SandboxSSEEvent {
   detail?: string;
   instance?: InstancePublic;
   error?: string;
+}
+
+// ──────────────────────────────────────
+// Session (server-persisted)
+// ──────────────────────────────────────
+
+export interface SessionRecord {
+  sessionKey: string;
+  ownerId: string;
+  instanceId: string;
+  instanceName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SessionExchangeRecord {
+  id: string;
+  input: string;
+  output?: string;
+  summary?: string;
+  status: TaskSummary['status'];
+  timestamp: string;
+  completedAt?: string;
+}
+
+export interface SessionDetail extends SessionRecord {
+  exchanges: SessionExchangeRecord[];
+}
+
+// ──────────────────────────────────────
+// Execution (server-persisted)
+// ──────────────────────────────────────
+
+export interface ExecutionRecord {
+  id: string;
+  ownerId: string;
+  teamId: string;
+  teamName: string;
+  goal: string;
+  summary?: string;
+  status: ExecutionStatus | 'cancelled';
+  turns: unknown[];
+  edges: unknown[];
+  graph?: ExecutionGraph;
+  metrics?: ExecutionMetrics;
+  createdAt: string;
+  completedAt?: string;
 }
 
 // WebSocket log entry

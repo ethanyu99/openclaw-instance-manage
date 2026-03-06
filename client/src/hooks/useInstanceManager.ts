@@ -1,15 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { InstancePublic, WSMessage, TurnSummary } from '@shared/types';
-import { fetchInstances, createWebSocket } from '@/lib/api';
+import type { InstancePublic, WSMessage, TurnSummary, ExecutionConfig, ExecutionMetrics, ExecutionGraph } from '@shared/types';
+import { fetchInstances, createWebSocket, fetchExecutionsApi } from '@/lib/api';
 import {
-  addExchangeToSession,
-  updateExchange,
-  type SessionExchange,
-  getTeamExecutions,
   type TeamExecutionHistory,
-  saveExecution,
-  getExecutions,
-  type ExecutionHistory,
+  getTeamExecutions,
 } from '@/lib/storage';
 
 interface PendingExchange {
@@ -17,6 +11,36 @@ interface PendingExchange {
   instanceName: string;
   content: string;
   timestamp: string;
+}
+
+export interface ExecutionHistory {
+  id: string;
+  teamId: string;
+  teamName: string;
+  goal: string;
+  turns: Array<{
+    id: string;
+    seq: number;
+    role: string;
+    instanceId: string;
+    task: string;
+    output: string;
+    actionType?: string;
+    actionSummary?: string;
+    status: string;
+    depth: number;
+    parentTurnId: string | null;
+    durationMs?: number;
+    startedAt?: string;
+    completedAt?: string;
+  }>;
+  edges: Array<{ from: string; to: string; actionType: string }>;
+  graph?: ExecutionGraph;
+  metrics?: ExecutionMetrics;
+  status: 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
+  summary?: string;
+  createdAt: string;
+  completedAt?: string;
 }
 
 export function useInstanceManager() {
@@ -67,28 +91,11 @@ export function useInstanceManager() {
         break;
 
       case 'task:status': {
-        // Create session exchange entry when we get sessionKey from server
         const serverTaskId = msg.payload?.id || msg.taskId;
-        if (msg.sessionKey && serverTaskId) {
+        if (serverTaskId) {
           const pending = pendingExchangesRef.current[serverTaskId];
           if (pending) {
-            const exchange: SessionExchange = {
-              id: serverTaskId,
-              input: pending.content,
-              status: msg.payload?.status || 'pending',
-              timestamp: pending.timestamp,
-            };
-            addExchangeToSession(msg.sessionKey, pending.instanceId, pending.instanceName, exchange);
             delete pendingExchangesRef.current[serverTaskId];
-          } else if (msg.payload?.content && msg.payload.status === 'pending') {
-            const inst = instancesRef.current.find(i => i.id === msg.instanceId);
-            const exchange: SessionExchange = {
-              id: serverTaskId,
-              input: msg.payload.content,
-              status: msg.payload.status,
-              timestamp: msg.payload.createdAt || new Date().toISOString(),
-            };
-            addExchangeToSession(msg.sessionKey, msg.instanceId!, inst?.name || msg.instanceId!, exchange);
           }
         }
 
@@ -125,7 +132,6 @@ export function useInstanceManager() {
           taskContentRef.current[msg.taskId] = (taskContentRef.current[msg.taskId] || '') + chunk;
         }
         if (msg.taskId && msg.payload.summary) {
-          updateExchange(msg.taskId, { summary: msg.payload.summary });
           setInstances(prev =>
             prev.map(inst =>
               inst.id === msg.instanceId && inst.currentTask
@@ -139,13 +145,6 @@ export function useInstanceManager() {
 
       case 'task:complete':
         if (msg.taskId) {
-          const output = taskContentRef.current[msg.taskId] || msg.payload.summary || '';
-          updateExchange(msg.taskId, {
-            status: 'completed',
-            summary: msg.payload.summary,
-            output,
-            completedAt: new Date().toISOString(),
-          });
           delete taskContentRef.current[msg.taskId];
         }
         setInstances(prev =>
@@ -161,17 +160,30 @@ export function useInstanceManager() {
           return next;
         });
         loadInstances();
+        notifyRef.current?.('Task Completed', msg.payload.summary || 'A task has finished');
+        break;
+
+      case 'task:cancelled':
+        if (msg.taskId) {
+          delete taskContentRef.current[msg.taskId];
+        }
+        setInstances(prev =>
+          prev.map(inst =>
+            inst.id === msg.instanceId
+              ? { ...inst, status: 'online', currentTask: inst.currentTask ? { ...inst.currentTask, status: 'cancelled' } : undefined }
+              : inst
+          )
+        );
+        setTaskStreams(prev => {
+          const next = { ...prev };
+          delete next[msg.instanceId!];
+          return next;
+        });
+        loadInstances();
         break;
 
       case 'task:error':
         if (msg.taskId) {
-          const output = taskContentRef.current[msg.taskId] || '';
-          updateExchange(msg.taskId, {
-            status: 'failed',
-            summary: msg.payload.error,
-            output: output || undefined,
-            completedAt: new Date().toISOString(),
-          });
           delete taskContentRef.current[msg.taskId];
         }
         setInstances(prev =>
@@ -182,6 +194,7 @@ export function useInstanceManager() {
           )
         );
         loadInstances();
+        notifyRef.current?.('Task Failed', msg.payload.error || 'A task has failed');
         break;
 
       // ── Autonomous Execution Events ──
@@ -338,7 +351,7 @@ export function useInstanceManager() {
       case 'execution:completed': {
         if (activeExecutionRef.current) {
           const exec = activeExecutionRef.current;
-          exec.status = 'completed';
+          exec.status = msg.payload.status === 'failed' ? 'failed' : 'completed';
           exec.completedAt = msg.timestamp;
           exec.summary = msg.payload.summary;
           exec.graph = msg.payload.graph;
@@ -346,7 +359,6 @@ export function useInstanceManager() {
           if (msg.payload.teamName) exec.teamName = msg.payload.teamName;
           if (msg.payload.goal) exec.goal = msg.payload.goal;
 
-          saveExecution(exec);
           setExecutions(prev => [exec, ...prev.filter(e => e.id !== exec.id)]);
           activeExecutionRef.current = null;
         }
@@ -356,6 +368,7 @@ export function useInstanceManager() {
           type: 'execution:completed',
           timestamp: msg.timestamp,
         }]);
+        notifyRef.current?.('Execution Completed', msg.payload.summary || 'Team execution finished');
         break;
       }
 
@@ -367,7 +380,6 @@ export function useInstanceManager() {
           exec.graph = msg.payload.graph;
           exec.metrics = msg.payload.metrics;
 
-          saveExecution(exec);
           setExecutions(prev => [exec, ...prev.filter(e => e.id !== exec.id)]);
           activeExecutionRef.current = null;
         }
@@ -375,6 +387,28 @@ export function useInstanceManager() {
           executionId: msg.payload.executionId,
           message: `Execution TIMEOUT: ${msg.payload.message}`,
           type: 'execution:timeout',
+          timestamp: msg.timestamp,
+        }]);
+        notifyRef.current?.('Execution Timeout', msg.payload.message || 'Execution timed out');
+        break;
+      }
+
+      case 'execution:cancelled': {
+        if (activeExecutionRef.current) {
+          const exec = activeExecutionRef.current;
+          exec.status = 'cancelled';
+          exec.completedAt = msg.timestamp;
+          exec.summary = msg.payload.summary;
+          exec.graph = msg.payload.graph;
+          exec.metrics = msg.payload.metrics;
+
+          setExecutions(prev => [exec, ...prev.filter(e => e.id !== exec.id)]);
+          activeExecutionRef.current = null;
+        }
+        setExecutionLogs(prev => [...prev, {
+          executionId: msg.payload.executionId,
+          message: `Execution cancelled: ${msg.payload.summary}`,
+          type: 'execution:cancelled',
           timestamp: msg.timestamp,
         }]);
         break;
@@ -434,6 +468,9 @@ export function useInstanceManager() {
     setTeamExecutions(getTeamExecutions());
   }, []);
 
+  // Notification callback ref
+  const notifyRef = useRef<((title: string, body: string) => void) | null>(null);
+
   // New autonomous execution state
   const [executionLogs, setExecutionLogs] = useState<Array<{
     executionId: string;
@@ -445,23 +482,54 @@ export function useInstanceManager() {
   }>>([]);
   const [executionStreams, setExecutionStreams] = useState<Record<string, string>>({});
   const activeExecutionRef = useRef<ExecutionHistory | null>(null);
-  const [executions, setExecutions] = useState<ExecutionHistory[]>(() => getExecutions());
+  const [executions, setExecutions] = useState<ExecutionHistory[]>([]);
 
   const clearExecutionLogs = useCallback(() => setExecutionLogs([]), []);
 
-  const refreshExecutions = useCallback(() => {
-    setExecutions(getExecutions());
+  const loadExecutions = useCallback(async () => {
+    try {
+      const data = await fetchExecutionsApi();
+      setExecutions(data.executions as unknown as ExecutionHistory[]);
+    } catch {
+      // ignore
+    }
   }, []);
+
+  useEffect(() => {
+    loadExecutions();
+  }, [loadExecutions]);
 
   const activeExecution = activeExecutionRef.current;
 
-  const dispatchTeamTask = useCallback((teamId: string, content: string, newSession?: boolean) => {
+  const dispatchTeamTask = useCallback((teamId: string, content: string, newSession?: boolean, config?: Partial<ExecutionConfig>) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({
       type: 'team:dispatch',
-      payload: { teamId, content, newSession: newSession || undefined },
+      payload: { teamId, content, newSession: newSession || undefined, config: config || undefined },
       timestamp: new Date().toISOString(),
     }));
+  }, []);
+
+  const cancelTask = useCallback((taskId: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'task:cancel',
+      payload: { taskId },
+      timestamp: new Date().toISOString(),
+    }));
+  }, []);
+
+  const cancelExecution = useCallback((executionId: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'execution:cancel',
+      payload: { executionId },
+      timestamp: new Date().toISOString(),
+    }));
+  }, []);
+
+  const setNotifyCallback = useCallback((fn: (title: string, body: string) => void) => {
+    notifyRef.current = fn;
   }, []);
 
   const dispatchTask = useCallback((instanceId: string, content: string, instanceName: string, newSession?: boolean, imageUrls?: string[]) => {
@@ -492,6 +560,8 @@ export function useInstanceManager() {
     connected,
     dispatchTask,
     dispatchTeamTask,
+    cancelTask,
+    cancelExecution,
     teamLogs,
     clearTeamLogs,
     teamExecutions,
@@ -503,6 +573,7 @@ export function useInstanceManager() {
     executions,
     activeExecution,
     clearExecutionLogs,
-    refreshExecutions,
+    refreshExecutions: loadExecutions,
+    setNotifyCallback,
   };
 }

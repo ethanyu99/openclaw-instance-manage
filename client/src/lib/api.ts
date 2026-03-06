@@ -1,4 +1,4 @@
-import type { InstancePublic, TaskSummary, WSMessage, InstanceStats, SandboxProgress, SandboxSSEEvent, TeamPublic, TeamTemplate, ClawRole, ShareToken, ShareDuration, ShareViewData } from '@shared/types';
+import type { InstancePublic, TaskSummary, WSMessage, InstanceStats, SandboxProgress, SandboxSSEEvent, TeamPublic, TeamTemplate, ClawRole, ShareToken, ShareDuration, ShareViewData, SessionRecord, SessionDetail, ExecutionRecord } from '@shared/types';
 import { getUserId, getAuthToken, type AuthUser } from './user';
 
 const API_BASE = '/api';
@@ -464,6 +464,66 @@ export async function fetchShareView(token: string): Promise<ShareViewData> {
     throw new Error(body.error || 'Share link is invalid or expired');
   }
   return res.json();
+}
+
+// ── Session API ───────────────────────
+
+export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
+  const res = await fetch(`${API_BASE}/sessions`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch sessions');
+  return res.json();
+}
+
+export async function fetchSessionDetail(sessionKey: string): Promise<SessionDetail> {
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionKey)}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch session detail');
+  return res.json();
+}
+
+export async function deleteSessionApi(sessionKey: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionKey)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete session');
+}
+
+export async function clearSessionsApi(): Promise<void> {
+  const res = await fetch(`${API_BASE}/sessions`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to clear sessions');
+}
+
+// ── Execution API ─────────────────────
+
+export async function fetchExecutionsApi(): Promise<{ executions: ExecutionRecord[] }> {
+  const res = await fetch(`${API_BASE}/executions`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch executions');
+  return res.json();
+}
+
+export async function fetchExecutionDetail(id: string): Promise<ExecutionRecord> {
+  const res = await fetch(`${API_BASE}/executions/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch execution');
+  return res.json();
+}
+
+export async function deleteExecutionApi(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/executions/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete execution');
+}
+
+export async function clearExecutionsApi(): Promise<void> {
+  const res = await fetch(`${API_BASE}/executions`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to clear executions');
 }
 
 // ── Auth API ──────────────────────────

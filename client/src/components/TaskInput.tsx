@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Send, X, RotateCcw, Layers, ImagePlus, Loader2, Users } from 'lucide-react';
-import type { InstancePublic, TeamPublic } from '@shared/types';
+import { Send, X, RotateCcw, Layers, ImagePlus, Loader2, Users, Settings2 } from 'lucide-react';
+import type { InstancePublic, TeamPublic, ExecutionConfig } from '@shared/types';
 import { uploadFiles } from '@/lib/api';
 
 interface TaskInputProps {
   instances: InstancePublic[];
   teams?: TeamPublic[];
   onDispatch: (instanceId: string, content: string, instanceName: string, newSession?: boolean, imageUrls?: string[]) => void;
-  onTeamDispatch?: (teamId: string, content: string, newSession?: boolean) => void;
+  onTeamDispatch?: (teamId: string, content: string, newSession?: boolean, config?: Partial<ExecutionConfig>) => void;
   shareMode?: boolean;
 }
 
@@ -52,6 +52,8 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
   const [pendingNewSession, setPendingNewSession] = useState(false);
   const [images, setImages] = useState<PastedImage[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [execConfig, setExecConfig] = useState<Partial<ExecutionConfig>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-select single instance in share mode (no teams available)
@@ -196,7 +198,8 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
     // Team mode
     if (selectedTeam) {
       if (!content) return;
-      onTeamDispatch?.(selectedTeam.id, content, pendingNewSession || undefined);
+      const config = Object.keys(execConfig).length > 0 ? execConfig : undefined;
+      onTeamDispatch?.(selectedTeam.id, content, pendingNewSession || undefined, config);
       setValue('');
       setPendingNewSession(false);
       return;
@@ -434,6 +437,60 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
               <RotateCcw className="h-3 w-3" />
               {pendingNewSession ? 'New Chat ✓' : 'New Chat'}
             </Button>
+            {selectedTeam && (
+              <Button
+                type="button"
+                variant={showConfig ? 'secondary' : 'ghost'}
+                size="sm"
+                className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${showConfig ? 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setShowConfig(prev => !prev)}
+                title="Execution config"
+              >
+                <Settings2 className="h-3 w-3" />
+                Config
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Execution config panel */}
+        {showConfig && selectedTeam && (
+          <div className="px-4 py-2.5 border-t border-border/30 bg-muted/30 space-y-2.5">
+            <div className="flex items-center gap-4">
+              <label className="text-[11px] font-medium text-muted-foreground w-20 shrink-0">Max Turns</label>
+              <input
+                type="range"
+                min={5} max={100} step={5}
+                value={execConfig.maxTurns ?? 50}
+                onChange={e => setExecConfig(prev => ({ ...prev, maxTurns: Number(e.target.value) }))}
+                className="flex-1 h-1.5 accent-violet-600"
+              />
+              <span className="text-[11px] font-mono text-foreground w-8 text-right">{execConfig.maxTurns ?? 50}</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="text-[11px] font-medium text-muted-foreground w-20 shrink-0">Max Depth</label>
+              <input
+                type="range"
+                min={3} max={30} step={1}
+                value={execConfig.maxDepth ?? 15}
+                onChange={e => setExecConfig(prev => ({ ...prev, maxDepth: Number(e.target.value) }))}
+                className="flex-1 h-1.5 accent-violet-600"
+              />
+              <span className="text-[11px] font-mono text-foreground w-8 text-right">{execConfig.maxDepth ?? 15}</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="text-[11px] font-medium text-muted-foreground w-20 shrink-0">Turn Timeout</label>
+              <select
+                value={execConfig.turnTimeoutMs ?? 600000}
+                onChange={e => setExecConfig(prev => ({ ...prev, turnTimeoutMs: Number(e.target.value) }))}
+                className="flex-1 h-7 rounded border border-border/60 bg-card text-xs px-2"
+              >
+                <option value={120000}>2 min</option>
+                <option value={300000}>5 min</option>
+                <option value={600000}>10 min</option>
+                <option value={900000}>15 min</option>
+              </select>
+            </div>
           </div>
         )}
 

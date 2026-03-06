@@ -18,7 +18,10 @@ import {
   saveShareToken,
   deleteShareTokenFromDB,
   cleanExpiredShareTokens,
+  saveSession,
+  updateTaskOutput,
 } from './persistence';
+import type { SessionRecord } from '../../shared/types';
 
 let instances: Map<string, Instance> = new Map();
 let tasks: Map<string, TaskSummary> = new Map();
@@ -39,6 +42,7 @@ const rolesByTeam: Map<string, string[]> = new Map();
 const tasksByInstance: Map<string, string[]> = new Map();
 const sessionKeys: Map<string, string> = new Map();
 const teamSessions: Map<string, string> = new Map();
+const instanceTeamUsage: Set<string> = new Set();
 const MAX_TEAM_HISTORY = 10;
 const teamExecutionHistory: Map<string, Array<{ goal: string; summary: string; completedAt: string }>> = new Map();
 
@@ -54,7 +58,7 @@ function persistInstance(instance: Instance) {
   );
 }
 
-function persistTask(task: TaskSummary) {
+function persistTask(task: TaskSummary & { output?: string }) {
   saveTask(task).catch(err =>
     console.error('[store] Failed to persist task:', err)
   );
@@ -213,7 +217,7 @@ export const store = {
     return tasks.get(id);
   },
 
-  createTask(ownerId: string, instanceId: string, content: string, taskId?: string): TaskSummary {
+  createTask(ownerId: string, instanceId: string, content: string, taskId?: string, sessionKey?: string): TaskSummary {
     const id = taskId || uuid();
     const now = new Date().toISOString();
     const task: TaskSummary = {
@@ -222,6 +226,7 @@ export const store = {
       instanceId,
       content,
       status: 'pending',
+      sessionKey,
       createdAt: now,
       updatedAt: now,
     };
@@ -293,7 +298,16 @@ export const store = {
     const compositeKey = `${ownerId}:${instanceId}`;
     const key = `${ownerId}-${instanceId}-${Date.now()}`;
     sessionKeys.set(compositeKey, key);
+    instanceTeamUsage.delete(compositeKey);
     return key;
+  },
+
+  markUsedByTeam(ownerId: string, instanceId: string): void {
+    instanceTeamUsage.add(`${ownerId}:${instanceId}`);
+  },
+
+  wasUsedByTeam(ownerId: string, instanceId: string): boolean {
+    return instanceTeamUsage.has(`${ownerId}:${instanceId}`);
   },
 
   getOwnerByInstanceId(instanceId: string): string | undefined {
@@ -594,6 +608,28 @@ export const store = {
     shareTokens.delete(id);
     deleteShareTokenFromDB(id).catch(err => console.error('[store] Failed to delete share token:', err));
     return true;
+  },
+
+  // ── Session persistence ─────────
+
+  ensureSession(ownerId: string, instanceId: string, instanceName: string, sessionKey: string): void {
+    const session: SessionRecord = {
+      sessionKey,
+      ownerId,
+      instanceId,
+      instanceName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    saveSession(session).catch(err =>
+      console.error('[store] Failed to persist session:', err)
+    );
+  },
+
+  updateTaskOutput(taskId: string, output: string): void {
+    updateTaskOutput(taskId, output).catch(err =>
+      console.error('[store] Failed to update task output:', err)
+    );
   },
 
   cleanExpiredShareTokens(): void {

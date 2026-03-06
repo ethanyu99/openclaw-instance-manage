@@ -1,15 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2 } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { InstancePublic } from '@shared/types';
 import { deleteInstance, checkHealth, updateInstance } from '@/lib/api';
-import { getExchangeById } from '@/lib/storage';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 import { SandboxConfigDialog } from '@/components/SandboxConfigDialog';
 import { ShareDialog } from '@/components/ShareDialog';
@@ -18,6 +17,7 @@ interface InstanceCardProps {
   instance: InstancePublic;
   taskStream?: string;
   onRefresh: () => void;
+  onCancelTask?: (taskId: string) => void;
 }
 
 const statusColor: Record<string, string> = {
@@ -32,7 +32,7 @@ const statusBadgeVariant: Record<string, 'default' | 'secondary' | 'destructive'
   offline: 'outline',
 };
 
-export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardProps) {
+export function InstanceCard({ instance, taskStream, onRefresh, onCancelTask }: InstanceCardProps) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -93,11 +93,6 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
     }
   };
 
-  const sessionForTask = useMemo(() => {
-    if (!instance.currentTask?.id) return null;
-    const result = getExchangeById(instance.currentTask.id);
-    return result?.session || null;
-  }, [instance.currentTask?.id, instance.currentTask?.status]);
 
   return (
     <>
@@ -210,18 +205,31 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
                   <span className="w-1.5 h-1.5 rounded-full bg-primary/40"></span>
                   Current Task
                 </span>
-                <Badge
-                  variant={
-                    instance.currentTask.status === 'running'
-                      ? 'default'
-                      : instance.currentTask.status === 'completed'
-                      ? 'secondary'
-                      : 'destructive'
-                  }
-                  className="text-[10px] uppercase tracking-wider font-semibold"
-                >
-                  {instance.currentTask.status}
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  {instance.currentTask.status === 'running' && onCancelTask && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-red-100 text-red-700 hover:bg-red-600 hover:text-white dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white transition-colors"
+                      onClick={(e) => { e.stopPropagation(); onCancelTask(instance.currentTask!.id); }}
+                      title="Cancel task"
+                    >
+                      <XCircle className="h-3 w-3" />
+                      Cancel
+                    </button>
+                  )}
+                  <Badge
+                    variant={
+                      instance.currentTask.status === 'running'
+                        ? 'default'
+                        : instance.currentTask.status === 'completed'
+                        ? 'secondary'
+                        : 'destructive'
+                    }
+                    className="text-[10px] uppercase tracking-wider font-semibold"
+                  >
+                    {instance.currentTask.status}
+                  </Badge>
+                </div>
               </div>
               <p className="text-xs text-foreground font-medium border-l-2 border-primary/40 pl-2.5 truncate" title={instance.currentTask.content}>
                 {instance.currentTask.content}
@@ -243,7 +251,7 @@ export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardPr
       </Card>
 
       <SessionDetailDialog
-        session={sessionForTask}
+        session={null}
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />

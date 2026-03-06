@@ -1,5 +1,5 @@
 import { getPool } from './db';
-import type { Instance, TaskSummary, Team, ClawRole, TeamMemberSlot, ShareToken } from '../../shared/types';
+import type { Instance, TaskSummary, Team, ClawRole, TeamMemberSlot, ShareToken, SessionRecord, SessionDetail, SessionExchangeRecord, ExecutionRecord } from '../../shared/types';
 
 // ── Teams ──────────────────────────────
 
@@ -183,14 +183,16 @@ export async function loadTasks(): Promise<Map<string, TaskSummary>> {
   return map;
 }
 
-export async function saveTask(task: TaskSummary): Promise<void> {
+export async function saveTask(task: TaskSummary & { output?: string }): Promise<void> {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO tasks (id, owner_id, instance_id, content, status, summary, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO tasks (id, owner_id, instance_id, content, status, summary, session_key, output, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (id) DO UPDATE SET
        status = EXCLUDED.status,
        summary = EXCLUDED.summary,
+       session_key = COALESCE(EXCLUDED.session_key, tasks.session_key),
+       output = COALESCE(EXCLUDED.output, tasks.output),
        updated_at = EXCLUDED.updated_at`,
     [
       task.id,
@@ -199,6 +201,8 @@ export async function saveTask(task: TaskSummary): Promise<void> {
       task.content,
       task.status,
       task.summary || null,
+      task.sessionKey || null,
+      task.output || null,
       task.createdAt,
       task.updatedAt,
     ]
@@ -251,4 +255,179 @@ export async function cleanExpiredShareTokens(): Promise<number> {
   const pool = getPool();
   const result = await pool.query('DELETE FROM share_tokens WHERE expires_at < NOW()');
   return result.rowCount || 0;
+}
+
+// ── Sessions ──────────────────────────
+
+export async function saveSession(session: SessionRecord): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO sessions (id, owner_id, instance_id, instance_name, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET
+       instance_name = EXCLUDED.instance_name,
+       updated_at = EXCLUDED.updated_at`,
+    [session.sessionKey, session.ownerId, session.instanceId, session.instanceName, session.createdAt, session.updatedAt]
+  );
+}
+
+export async function loadSessionsByOwner(ownerId: string): Promise<SessionRecord[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    'SELECT * FROM sessions WHERE owner_id = $1 ORDER BY updated_at DESC LIMIT 100',
+    [ownerId]
+  );
+  return rows.map(row => ({
+    sessionKey: row.id,
+    ownerId: row.owner_id,
+    instanceId: row.instance_id,
+    instanceName: row.instance_name,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  }));
+}
+
+export async function loadSessionDetail(ownerId: string, sessionKey: string): Promise<SessionDetail | null> {
+  const pool = getPool();
+  const { rows: sessionRows } = await pool.query(
+    'SELECT * FROM sessions WHERE id = $1 AND owner_id = $2',
+    [sessionKey, ownerId]
+  );
+  if (sessionRows.length === 0) return null;
+
+  const row = sessionRows[0];
+  const { rows: taskRows } = await pool.query(
+    'SELECT * FROM tasks WHERE session_key = $1 AND owner_id = $2 ORDER BY created_at ASC',
+    [sessionKey, ownerId]
+  );
+
+  const exchanges: SessionExchangeRecord[] = taskRows.map(t => ({
+    id: t.id,
+    input: t.content,
+    output: t.output || undefined,
+    summary: t.summary || undefined,
+    status: t.status,
+    timestamp: t.created_at.toISOString(),
+    completedAt: t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'
+      ? t.updated_at.toISOString() : undefined,
+  }));
+
+  return {
+    sessionKey: row.id,
+    ownerId: row.owner_id,
+    instanceId: row.instance_id,
+    instanceName: row.instance_name,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    exchanges,
+  };
+}
+
+export async function deleteSessionFromDB(ownerId: string, sessionKey: string): Promise<boolean> {
+  const pool = getPool();
+  await pool.query('DELETE FROM tasks WHERE session_key = $1 AND owner_id = $2', [sessionKey, ownerId]);
+  const result = await pool.query('DELETE FROM sessions WHERE id = $1 AND owner_id = $2', [sessionKey, ownerId]);
+  return (result.rowCount || 0) > 0;
+}
+
+export async function clearSessionsForOwner(ownerId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    'DELETE FROM tasks WHERE owner_id = $1 AND session_key IS NOT NULL',
+    [ownerId]
+  );
+  await pool.query('DELETE FROM sessions WHERE owner_id = $1', [ownerId]);
+}
+
+export async function updateTaskOutput(taskId: string, output: string): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    'UPDATE tasks SET output = $1, updated_at = NOW() WHERE id = $2',
+    [output, taskId]
+  );
+}
+
+// ── Executions ──────────────────────────
+
+export async function saveExecution(exec: ExecutionRecord): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO executions (id, owner_id, team_id, team_name, goal, summary, status, turns, edges, graph, metrics, created_at, completed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     ON CONFLICT (id) DO UPDATE SET
+       summary = EXCLUDED.summary,
+       status = EXCLUDED.status,
+       turns = EXCLUDED.turns,
+       edges = EXCLUDED.edges,
+       graph = EXCLUDED.graph,
+       metrics = EXCLUDED.metrics,
+       completed_at = EXCLUDED.completed_at`,
+    [
+      exec.id, exec.ownerId, exec.teamId, exec.teamName,
+      exec.goal, exec.summary || null, exec.status,
+      JSON.stringify(exec.turns), JSON.stringify(exec.edges),
+      exec.graph ? JSON.stringify(exec.graph) : null,
+      exec.metrics ? JSON.stringify(exec.metrics) : null,
+      exec.createdAt, exec.completedAt || null,
+    ]
+  );
+}
+
+export async function loadExecutionsByOwner(ownerId: string): Promise<ExecutionRecord[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    'SELECT * FROM executions WHERE owner_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [ownerId]
+  );
+  return rows.map(row => ({
+    id: row.id,
+    ownerId: row.owner_id,
+    teamId: row.team_id,
+    teamName: row.team_name,
+    goal: row.goal,
+    summary: row.summary || undefined,
+    status: row.status,
+    turns: row.turns || [],
+    edges: row.edges || [],
+    graph: row.graph || undefined,
+    metrics: row.metrics || undefined,
+    createdAt: row.created_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() || undefined,
+  }));
+}
+
+export async function loadExecutionById(ownerId: string, id: string): Promise<ExecutionRecord | null> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    'SELECT * FROM executions WHERE id = $1 AND owner_id = $2',
+    [id, ownerId]
+  );
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    teamId: row.team_id,
+    teamName: row.team_name,
+    goal: row.goal,
+    summary: row.summary || undefined,
+    status: row.status,
+    turns: row.turns || [],
+    edges: row.edges || [],
+    graph: row.graph || undefined,
+    metrics: row.metrics || undefined,
+    createdAt: row.created_at.toISOString(),
+    completedAt: row.completed_at?.toISOString() || undefined,
+  };
+}
+
+export async function deleteExecutionFromDB(ownerId: string, id: string): Promise<boolean> {
+  const pool = getPool();
+  const result = await pool.query('DELETE FROM executions WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+  return (result.rowCount || 0) > 0;
+}
+
+export async function clearExecutionsForOwner(ownerId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query('DELETE FROM executions WHERE owner_id = $1', [ownerId]);
 }

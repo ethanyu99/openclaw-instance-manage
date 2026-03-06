@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ExecutionHistory } from '@/lib/storage';
+import type { ExecutionHistory } from '@/hooks/useInstanceManager';
 
 interface ExecutionTimelineProps {
   execution: ExecutionHistory;

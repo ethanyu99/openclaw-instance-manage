@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { X, ChevronUp, ChevronDown, GitBranch, Clock, BarChart3 } from 'lucide-react';
-import type { ExecutionHistory } from '@/lib/storage';
+import { X, ChevronUp, ChevronDown, GitBranch, Clock, BarChart3, StopCircle } from 'lucide-react';
+import type { ExecutionHistory } from '@/hooks/useInstanceManager';
 import { ExecutionGraphView } from './ExecutionGraphView';
 import { ExecutionTimeline } from './ExecutionTimeline';
 import { ExecutionMetricsPanel } from './ExecutionMetricsPanel';
@@ -20,6 +20,7 @@ interface ExecutionPanelProps {
   activeExecution: ExecutionHistory | null;
   latestExecution?: ExecutionHistory;
   onClear: () => void;
+  onCancelExecution?: (executionId: string) => void;
   onViewDetail: (exec: ExecutionHistory) => void;
 }
 
@@ -50,6 +51,7 @@ export function ExecutionPanel({
   activeExecution,
   latestExecution,
   onClear,
+  onCancelExecution,
   onViewDetail,
 }: ExecutionPanelProps) {
   const [expanded, setExpanded] = useState(true);
@@ -58,6 +60,7 @@ export function ExecutionPanel({
   const lastLog = logs[logs.length - 1];
   const isDone = lastLog?.type === 'execution:completed' ||
     lastLog?.type === 'execution:timeout' ||
+    lastLog?.type === 'execution:cancelled' ||
     lastLog?.type === 'team:error';
 
   const execution = activeExecution || latestExecution || null;
@@ -115,6 +118,17 @@ export function ExecutionPanel({
               </button>
             ))}
           </div>
+          {!isDone && activeExecution && onCancelExecution && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={() => onCancelExecution(activeExecution.id)}
+            >
+              <StopCircle className="h-3 w-3 mr-1" />
+              Stop
+            </Button>
+          )}
           {isDone && latestExecution && (
             <Button
               variant="ghost"

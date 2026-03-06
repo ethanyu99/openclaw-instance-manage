@@ -1,10 +1,12 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
-import type { WSMessage, TaskDispatchPayload, TeamDispatchPayload } from '../../shared/types';
+import type { WSMessage, TaskDispatchPayload, TeamDispatchPayload, ExecutionConfig } from '../../shared/types';
 import { store } from './store';
 import { logWS, createLogEntry } from './ws-logger';
-import { dispatchToTeam } from './team-dispatch';
+import { dispatchToTeam, cancelExecution } from './team-dispatch';
 import { verifyToken } from './auth';
+
+const activeControllers = new Map<string, AbortController>();
 
 interface WSClient {
   ws: WebSocket;
@@ -36,6 +38,8 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
   if (!instance || !instance.endpoint) return;
 
   const sessionUser = store.getSessionKey(ownerId, instanceId);
+
+  store.ensureSession(ownerId, instanceId, instance.name, sessionUser);
 
   store.updateInstance(instanceId, { status: 'busy' });
   store.updateTask(taskId, { status: 'running' });
@@ -97,8 +101,10 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
   let fullText = '';
   let receivedCompletion = false;
 
+  const controller = new AbortController();
+  activeControllers.set(taskId, controller);
+
   try {
-    const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 600_000);
 
     const response = await fetch(url, {
@@ -171,6 +177,7 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
     if (task && task.status === 'running') {
       const summary = fullText.slice(0, 500) || 'Task completed';
       store.updateTask(taskId, { status: 'completed', summary });
+      store.updateTaskOutput(taskId, fullText);
       store.updateInstance(instanceId, { status: 'online' });
       broadcastToOwner(ownerId, {
         type: 'task:complete',
@@ -187,9 +194,22 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
 
     const task = store.getTask(taskId);
     if (task && task.status === 'running') {
-      if (fullText.length > 0 && !receivedCompletion) {
+      if (message === 'This operation was aborted') {
+        store.updateTask(taskId, { status: 'cancelled', summary: 'Task cancelled by user' });
+        store.updateTaskOutput(taskId, fullText);
+        store.updateInstance(instanceId, { status: 'online' });
+        broadcastToOwner(ownerId, {
+          type: 'task:cancelled',
+          payload: { taskId, status: 'cancelled', summary: 'Task cancelled by user' },
+          instanceId,
+          taskId,
+          sessionKey: sessionUser,
+          timestamp: new Date().toISOString(),
+        });
+      } else if (fullText.length > 0 && !receivedCompletion) {
         const summary = fullText.slice(0, 500) + '\n\n[Connection lost — agent may still be running]';
         store.updateTask(taskId, { status: 'completed', summary });
+        store.updateTaskOutput(taskId, fullText);
         store.updateInstance(instanceId, { status: 'online' });
         broadcastToOwner(ownerId, {
           type: 'task:complete',
@@ -203,6 +223,8 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
         handleTaskFailure(ownerId, instanceId, taskId, message, sessionUser);
       }
     }
+  } finally {
+    activeControllers.delete(taskId);
   }
 }
 
@@ -404,7 +426,7 @@ export function setupWebSocket(wss: WebSocketServer) {
               ? `${content}${content ? '\n' : ''}[${imageUrls.length} image(s) attached]`
               : content;
 
-            const task = store.createTask(shareOwnerId, instanceId, displayContent, clientTaskId || msg.taskId || undefined);
+            const task = store.createTask(shareOwnerId, instanceId, displayContent, clientTaskId || msg.taskId || undefined, sessionKey);
 
             broadcastToOwner(shareOwnerId, {
               type: 'task:status',
@@ -419,9 +441,9 @@ export function setupWebSocket(wss: WebSocketServer) {
           }
 
           if (msg.type === 'team:dispatch' && shareType === 'team') {
-            const { teamId, content, newSession } = msg.payload as TeamDispatchPayload;
+            const { teamId, content, newSession, config } = msg.payload as TeamDispatchPayload;
             if (teamId !== shareTargetId) return;
-            dispatchToTeam(shareOwnerId, teamId, content, broadcastToOwner, newSession);
+            dispatchToTeam(shareOwnerId, teamId, content, broadcastToOwner, newSession, config);
           }
         } catch {
           // ignore parse errors
@@ -464,6 +486,8 @@ export function setupWebSocket(wss: WebSocketServer) {
 
           if (newSession) {
             store.resetSessionKey(userId, instanceId);
+          } else if (instance.teamId && store.wasUsedByTeam(userId, instanceId)) {
+            store.resetSessionKey(userId, instanceId);
           }
           const sessionKey = store.getSessionKey(userId, instanceId);
 
@@ -471,7 +495,7 @@ export function setupWebSocket(wss: WebSocketServer) {
             ? `${content}${content ? '\n' : ''}[${imageUrls.length} image(s) attached]`
             : content;
 
-          const task = store.createTask(userId, instanceId, displayContent, clientTaskId || msg.taskId || undefined);
+          const task = store.createTask(userId, instanceId, displayContent, clientTaskId || msg.taskId || undefined, sessionKey);
 
           broadcastToOwner(userId, {
             type: 'task:status',
@@ -485,9 +509,24 @@ export function setupWebSocket(wss: WebSocketServer) {
           dispatchToInstance(userId, instanceId, task.id, content, false, imageUrls);
         }
 
+        if (msg.type === 'task:cancel') {
+          const taskId = msg.payload?.taskId || msg.taskId;
+          if (taskId) {
+            const ctrl = activeControllers.get(taskId);
+            if (ctrl) ctrl.abort();
+          }
+        }
+
         if (msg.type === 'team:dispatch') {
-          const { teamId, content, newSession } = msg.payload as TeamDispatchPayload;
-          dispatchToTeam(userId, teamId, content, broadcastToOwner, newSession);
+          const { teamId, content, newSession, config } = msg.payload as TeamDispatchPayload;
+          dispatchToTeam(userId, teamId, content, broadcastToOwner, newSession, config);
+        }
+
+        if (msg.type === 'execution:cancel') {
+          const executionId = msg.payload?.executionId;
+          if (executionId) {
+            cancelExecution(executionId);
+          }
         }
       } catch {
         // ignore parse errors

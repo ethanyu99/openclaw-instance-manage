@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { History, ChevronDown, Loader2, User, Copy, Check, LogOut } from 'lucide-react';
+import { History, ChevronDown, Loader2, User, Copy, Check, LogOut, Bell, BellOff } from 'lucide-react';
 import type { InstancePublic, InstanceStats } from '@shared/types';
 import { getUserId } from '@/lib/user';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,6 +11,9 @@ interface StatusBarProps {
   instances: InstancePublic[];
   connected: boolean;
   onHistoryClick: () => void;
+  notifSupported?: boolean;
+  notifEnabled?: boolean;
+  onToggleNotif?: () => void;
 }
 
 function UserBadge() {
@@ -88,7 +91,7 @@ function UserBadge() {
   );
 }
 
-export function StatusBar({ stats, instances, connected, onHistoryClick }: StatusBarProps) {
+export function StatusBar({ stats, instances, connected, onHistoryClick, notifSupported, notifEnabled, onToggleNotif }: StatusBarProps) {
   const [expanded, setExpanded] = useState(false);
 
   const busyInstances = useMemo(
@@ -140,6 +143,17 @@ export function StatusBar({ stats, instances, connected, onHistoryClick }: Statu
         </div>
         <div className="flex items-center gap-3">
           <UserBadge />
+          {notifSupported && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${notifEnabled ? 'text-primary' : 'text-muted-foreground'}`}
+              onClick={onToggleNotif}
+              title={notifEnabled ? 'Notifications enabled' : 'Enable notifications'}
+            >
+              {notifEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

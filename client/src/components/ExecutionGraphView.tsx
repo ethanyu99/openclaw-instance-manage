@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import type { ExecutionHistory, ExecutionTurnRecord, ExecutionEdgeRecord } from '@/lib/storage';
+import type { ExecutionHistory } from '@/hooks/useInstanceManager';
+
+type ExecutionTurnRecord = ExecutionHistory['turns'][number];
+type ExecutionEdgeRecord = ExecutionHistory['edges'][number];
 
 interface ExecutionGraphViewProps {
   execution: ExecutionHistory;

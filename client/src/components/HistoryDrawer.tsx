@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Trash2, Monitor, Zap } from 'lucide-react';
-import { getSessions, clearSessions, deleteSession, deleteExecution, clearExecutions, type SessionHistory, type ExecutionHistory } from '@/lib/storage';
+import { fetchSessions, deleteSessionApi, clearSessionsApi, clearExecutionsApi, deleteExecutionApi } from '@/lib/api';
+import type { SessionRecord } from '@shared/types';
 import type { TeamExecutionHistory } from '@/lib/storage';
+import type { ExecutionHistory } from '@/hooks/useInstanceManager';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 
 type HistoryTab = 'sessions' | 'executions';
@@ -27,55 +29,57 @@ interface HistoryDrawerProps {
 }
 
 export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecution }: HistoryDrawerProps) {
-  const [sessions, setSessions] = useState<SessionHistory[]>([]);
-  const [selectedSession, setSelectedSession] = useState<SessionHistory | null>(null);
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [tab, setTab] = useState<HistoryTab>('sessions');
 
-  const refresh = () => setSessions(getSessions());
+  const refresh = useCallback(async () => {
+    try {
+      const data = await fetchSessions();
+      setSessions(data.sessions);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (open) refresh();
-  }, [open]);
+  }, [open, refresh]);
 
   const handleOpenChange = (isOpen: boolean) => {
     onOpenChange(isOpen);
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (tab === 'sessions') {
       if (!confirm('清除所有会话历史？')) return;
-      clearSessions();
+      await clearSessionsApi();
       setSessions([]);
     } else {
       if (!confirm('清除所有执行历史？')) return;
-      clearExecutions();
+      await clearExecutionsApi();
     }
   };
 
-  const handleDeleteSession = (e: React.MouseEvent, sessionKey: string) => {
+  const handleDeleteSession = async (e: React.MouseEvent, sessionKey: string) => {
     e.stopPropagation();
-    deleteSession(sessionKey);
+    await deleteSessionApi(sessionKey);
     refresh();
   };
 
-  const handleSessionClick = (session: SessionHistory) => {
+  const handleDeleteExecution = async (e: React.MouseEvent, execId: string) => {
+    e.stopPropagation();
+    await deleteExecutionApi(execId);
+  };
+
+  const handleSessionClick = (session: SessionRecord) => {
     setSelectedSession(session);
     setDetailOpen(true);
   };
 
-  const latestExchangeStatus = (session: SessionHistory) => {
-    const last = session.exchanges[session.exchanges.length - 1];
-    return last?.status || 'pending';
-  };
-
-  const sessionPreview = (session: SessionHistory) => {
-    const first = session.exchanges[0];
-    return first?.input || '';
-  };
-
   // Group sessions by date
-  const grouped = sessions.reduce<Record<string, SessionHistory[]>>((acc, session) => {
+  const grouped = sessions.reduce<Record<string, SessionRecord[]>>((acc, session) => {
     const date = new Date(session.updatedAt).toLocaleDateString();
     if (!acc[date]) acc[date] = [];
     acc[date].push(session);
@@ -167,9 +171,7 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                         <div className="flex-1 h-px bg-border/50" />
                       </div>
                       <div className="space-y-1">
-                        {dateSessions.map(session => {
-                          const status = latestExchangeStatus(session);
-                          return (
+                        {dateSessions.map(session => (
                             <div
                               key={session.sessionKey}
                               className="w-full text-left px-3 py-2 rounded-sm hover:bg-muted/50 border border-transparent hover:border-border transition-colors group relative cursor-pointer flex flex-col gap-1.5"
@@ -180,12 +182,6 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                                   <span className="text-xs font-mono text-primary font-medium truncate">
                                     {session.instanceName}
                                   </span>
-                                  {status === 'running' && (
-                                    <span className="flex h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
-                                  )}
-                                  <Badge variant="secondary" className="text-[9px] font-mono h-4 px-1 rounded-sm shrink-0">
-                                    {session.exchanges.length} msg
-                                  </Badge>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0 h-4">
                                   <span className="text-[10px] text-muted-foreground font-mono group-hover:hidden">
@@ -203,17 +199,10 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                               </div>
                               <p className="text-[11px] truncate text-muted-foreground font-mono">
                                 <span className="text-blue-500 mr-1.5">❯</span>
-                                {sessionPreview(session)}
+                                {session.sessionKey.slice(0, 30)}
                               </p>
-                              {session.exchanges.length > 1 && (
-                                <p className="text-[11px] text-muted-foreground/70 truncate font-mono">
-                                  <span className="mr-1.5 opacity-0">❯</span>
-                                  {session.exchanges[session.exchanges.length - 1]?.input}
-                                </p>
-                              )}
                             </div>
-                          );
-                        })}
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -266,10 +255,7 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                                   variant="ghost"
                                   size="icon"
                                   className="h-5 w-5 text-muted-foreground hover:text-destructive hidden group-hover:flex -my-0.5"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteExecution(exec.id);
-                                  }}
+                                  onClick={(e) => handleDeleteExecution(e, exec.id)}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>

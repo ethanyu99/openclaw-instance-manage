@@ -22,7 +22,9 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ExecutionHistory, ExecutionTurnRecord } from '@/lib/storage';
+import type { ExecutionHistory } from '@/hooks/useInstanceManager';
+
+type ExecutionTurnRecord = ExecutionHistory['turns'][number];
 
 interface ExecutionReportDialogProps {
   execution: ExecutionHistory | null;
@@ -76,6 +78,7 @@ const STATUS_CONFIG = {
   failed: { color: 'bg-red-50 text-red-700 border-red-200', label: '失败', icon: XCircle },
   timeout: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: '超时', icon: AlertTriangle },
   running: { color: 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse', label: '执行中', icon: Clock },
+  cancelled: { color: 'bg-zinc-50 text-zinc-700 border-zinc-200', label: '已取消', icon: XCircle },
 } as const;
 
 const TURN_STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {

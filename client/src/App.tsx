@@ -11,13 +11,13 @@ import { TeamExecutionDetailDialog } from '@/components/TeamExecutionDetailDialo
 import { ExecutionPanel } from '@/components/ExecutionPanel';
 import { ExecutionReportDialog } from '@/components/ExecutionReportDialog';
 import { ShareView } from '@/components/ShareView';
-import { useInstanceManager } from '@/hooks/useInstanceManager';
+import { useInstanceManager, type ExecutionHistory } from '@/hooks/useInstanceManager';
 import { useAuth } from '@/hooks/useAuth';
+import { useNotification } from '@/hooks/useNotification';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { fetchTeams } from '@/lib/api';
 import type { TeamPublic } from '@shared/types';
 import type { TeamExecutionHistory } from '@/lib/storage';
-import type { ExecutionHistory } from '@/lib/storage';
 
 type ViewTab = 'instances' | 'teams';
 
@@ -128,11 +128,18 @@ function MainApp() {
   const {
     instances, stats, taskStreams, connected,
     dispatchTask, dispatchTeamTask,
+    cancelTask, cancelExecution,
     teamExecutions,
     refreshInstances,
     executionLogs, executionStreams, executions, activeExecution,
     clearExecutionLogs,
+    setNotifyCallback,
   } = useInstanceManager();
+  const { notify, enabled: notifEnabled, toggleEnabled: toggleNotif, supported: notifSupported } = useNotification();
+
+  useEffect(() => {
+    setNotifyCallback(notify);
+  }, [notify, setNotifyCallback]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>('instances');
   const [teams, setTeams] = useState<TeamPublic[]>([]);
@@ -166,6 +173,9 @@ function MainApp() {
         instances={instances}
         connected={connected}
         onHistoryClick={() => setHistoryOpen(true)}
+        notifSupported={notifSupported}
+        notifEnabled={notifEnabled}
+        onToggleNotif={toggleNotif}
       />
 
       <div className="flex-1 overflow-hidden relative">
@@ -223,6 +233,7 @@ function MainApp() {
                       instance={inst}
                       taskStream={taskStreams[inst.id]}
                       onRefresh={refreshInstances}
+                      onCancelTask={cancelTask}
                     />
                   ))
                 )}
@@ -262,6 +273,7 @@ function MainApp() {
           activeExecution={activeExecution}
           latestExecution={executions[0]}
           onClear={clearExecutionLogs}
+          onCancelExecution={cancelExecution}
           onViewDetail={(exec: ExecutionHistory) => {
             setSelectedAutoExecution(exec);
             setAutoExecDetailOpen(true);

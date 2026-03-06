@@ -1,4 +1,4 @@
-import { type ComponentProps } from 'react';
+import { type ComponentProps, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,10 +9,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { SessionHistory } from '@/lib/storage';
+import type { SessionRecord, SessionDetail, SessionExchangeRecord } from '@shared/types';
+import { fetchSessionDetail } from '@/lib/api';
 
 interface SessionDetailDialogProps {
-  session: SessionHistory | null;
+  session: SessionRecord | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -66,7 +67,24 @@ function MarkdownContent({ content }: { content: string }) {
 }
 
 export function SessionDetailDialog({ session, open, onOpenChange }: SessionDetailDialogProps) {
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open && session) {
+      setLoading(true);
+      fetchSessionDetail(session.sessionKey)
+        .then(setDetail)
+        .catch(() => setDetail(null))
+        .finally(() => setLoading(false));
+    } else {
+      setDetail(null);
+    }
+  }, [open, session]);
+
   if (!session) return null;
+
+  const exchanges: SessionExchangeRecord[] = detail?.exchanges || [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,55 +99,61 @@ export function SessionDetailDialog({ session, open, onOpenChange }: SessionDeta
             </Badge>
           </div>
           <DialogDescription className="text-xs font-mono mt-1.5">
-            <span className="text-muted-foreground">Total records: {session.exchanges.length}</span>
+            <span className="text-muted-foreground">Total records: {exchanges.length}</span>
             <span className="mx-2 opacity-50">|</span>
             <span className="text-muted-foreground">Init: {new Date(session.createdAt).toLocaleString()}</span>
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 bg-zinc-50/50 dark:bg-zinc-950/50">
-          <div className="space-y-6">
-            {[...session.exchanges].reverse().map((exchange) => (
-              <div key={exchange.id} className="font-mono text-sm">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="text-[10px] text-muted-foreground mt-1 shrink-0 w-16">
-                    {new Date(exchange.timestamp).toLocaleTimeString([], { hour12: false })}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-blue-500 font-bold">❯</span>
-                      <span className="text-primary font-medium flex-1 whitespace-pre-wrap">{exchange.input}</span>
-                      <Badge variant={statusVariant[exchange.status] || 'outline'} className="text-[9px] h-4 rounded-sm uppercase tracking-wider shrink-0">
-                        {exchange.status}
-                      </Badge>
+          {loading ? (
+            <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+              Loading...
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {[...exchanges].reverse().map((exchange) => (
+                <div key={exchange.id} className="font-mono text-sm">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="text-[10px] text-muted-foreground mt-1 shrink-0 w-16">
+                      {new Date(exchange.timestamp).toLocaleTimeString([], { hour12: false })}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-blue-500 font-bold">❯</span>
+                        <span className="text-primary font-medium flex-1 whitespace-pre-wrap">{exchange.input}</span>
+                        <Badge variant={statusVariant[exchange.status] || 'outline'} className="text-[9px] h-4 rounded-sm uppercase tracking-wider shrink-0">
+                          {exchange.status}
+                        </Badge>
+                      </div>
 
-                    <div className="pl-4 border-l-2 border-muted/60 dark:border-muted/30 mt-2">
-                      {exchange.output ? (
-                        <div className="py-1 overflow-hidden font-sans">
-                          <MarkdownContent content={exchange.output} />
-                          {exchange.completedAt && (
-                            <p className="text-[10px] text-muted-foreground font-mono mt-3 opacity-60">
-                              [Process exited at {new Date(exchange.completedAt).toLocaleTimeString([], { hour12: false })}]
-                            </p>
-                          )}
-                        </div>
-                      ) : exchange.summary ? (
-                        <div className="py-1 overflow-hidden font-sans opacity-80">
-                          <MarkdownContent content={exchange.summary} />
-                        </div>
-                      ) : exchange.status === 'running' ? (
-                        <div className="py-2 flex items-center gap-2 text-muted-foreground">
-                          <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                          <span className="text-[11px]">Executing...</span>
-                        </div>
-                      ) : null}
+                      <div className="pl-4 border-l-2 border-muted/60 dark:border-muted/30 mt-2">
+                        {exchange.output ? (
+                          <div className="py-1 overflow-hidden font-sans">
+                            <MarkdownContent content={exchange.output} />
+                            {exchange.completedAt && (
+                              <p className="text-[10px] text-muted-foreground font-mono mt-3 opacity-60">
+                                [Process exited at {new Date(exchange.completedAt).toLocaleTimeString([], { hour12: false })}]
+                              </p>
+                            )}
+                          </div>
+                        ) : exchange.summary ? (
+                          <div className="py-1 overflow-hidden font-sans opacity-80">
+                            <MarkdownContent content={exchange.summary} />
+                          </div>
+                        ) : exchange.status === 'running' ? (
+                          <div className="py-2 flex items-center gap-2 text-muted-foreground">
+                            <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="text-[11px]">Executing...</span>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

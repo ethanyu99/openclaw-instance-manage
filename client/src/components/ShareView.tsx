@@ -7,7 +7,10 @@ import { fetchShareView, createShareWebSocket } from '@/lib/api';
 import { TaskInput } from '@/components/TaskInput';
 import { ExecutionPanel } from '@/components/ExecutionPanel';
 import type { ShareViewData, InstancePublic, TeamPublic, WSMessage, TurnSummary } from '@shared/types';
-import type { ExecutionHistory, ExecutionTurnRecord, ExecutionEdgeRecord } from '@/lib/storage';
+import type { ExecutionHistory } from '@/hooks/useInstanceManager';
+
+type ExecutionTurnRecord = ExecutionHistory['turns'][number];
+type ExecutionEdgeRecord = ExecutionHistory['edges'][number];
 
 interface ShareViewProps {
   token: string;
