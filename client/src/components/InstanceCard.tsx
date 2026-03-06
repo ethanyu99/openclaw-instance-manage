@@ -225,7 +225,7 @@ export function InstanceCard({ instance, taskStream, onRefresh, onCancelTask }: 
                   {instance.currentTask.status === 'running' && onCancelTask && (
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-red-100 text-red-700 hover:bg-red-600 hover:text-white dark:bg-red-900/40 dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white transition-colors"
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                       onClick={(e) => { e.stopPropagation(); onCancelTask(instance.currentTask!.id); }}
                       title="Cancel task"
                     >
@@ -267,7 +267,14 @@ export function InstanceCard({ instance, taskStream, onRefresh, onCancelTask }: 
       </Card>
 
       <SessionDetailDialog
-        session={null}
+        session={instance.currentTask?.sessionKey ? {
+          sessionKey: instance.currentTask.sessionKey,
+          ownerId: instance.currentTask.ownerId,
+          instanceId: instance.id,
+          instanceName: instance.name,
+          createdAt: instance.currentTask.createdAt,
+          updatedAt: instance.currentTask.updatedAt,
+        } : null}
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />
