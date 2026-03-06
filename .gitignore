@@ -8,3 +8,6 @@ dist
 # Persisted instance data & WS logs
 server/data/
 server/logs/
+
+# Skills upstream sync cache (cloned from GitHub)
+skills/.upstream/

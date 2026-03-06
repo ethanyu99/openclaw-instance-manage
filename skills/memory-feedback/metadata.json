@@ -1,0 +1,8 @@
+{
+  "id": "memory-feedback",
+  "author": "steipete",
+  "category": "productivity",
+  "tags": ["memory", "learning", "self-improvement", "feedback", "patterns"],
+  "emoji": "🧠",
+  "requires": { "bins": ["jq", "curl"] }
+}

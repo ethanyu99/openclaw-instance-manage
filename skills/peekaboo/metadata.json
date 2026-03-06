@@ -1,0 +1,9 @@
+{
+  "id": "peekaboo",
+  "author": "steipete",
+  "category": "browser",
+  "tags": ["macos", "ui-automation", "screenshot", "testing", "accessibility"],
+  "homepage": "https://peekaboo.boo",
+  "emoji": "👀",
+  "requires": { "bins": ["peekaboo"] }
+}

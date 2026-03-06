@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { store } from '../store';
 import { getSkillRegistry, getSkillById, searchSkills } from '../skill-registry';
+import { skillLoader } from '../skill-loader';
 import { installSkillToSandbox, uninstallSkillFromSandbox, batchInstallSkills, batchUninstallSkills, probeInstalledSkills } from '../skills';
 import { getSkillsByInstance } from '../persistence';
 
@@ -18,6 +19,13 @@ skillsRouter.get('/search', (req, res) => {
   if (!q) return res.json({ skills: getSkillRegistry() });
   const skills = searchSkills(q);
   res.json({ skills });
+});
+
+// GET /api/skills/:id/readme — get raw SKILL.md content for preview
+skillsRouter.get('/:id/readme', (req, res) => {
+  const content = skillLoader.getSkillMd(req.params.id);
+  if (!content) return res.status(404).json({ error: 'Skill not found' });
+  res.type('text/markdown').send(content);
 });
 
 // GET /api/skills/instance/:instanceId — get skills installed on an instance

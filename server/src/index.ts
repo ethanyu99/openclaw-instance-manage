@@ -22,6 +22,7 @@ import { setupWebSocket } from './ws';
 import { authMiddleware } from './auth';
 import { initDB } from './db';
 import { initStore, store } from './store';
+import { initSkillLoader } from './skill-loader';
 
 const app = express();
 const server = http.createServer(app);
@@ -69,6 +70,7 @@ setupWebSocket(wss);
 async function start() {
   await initDB();
   await initStore();
+  initSkillLoader();
 
   // Clean expired share tokens every hour
   setInterval(() => {

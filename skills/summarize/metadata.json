@@ -1,0 +1,9 @@
+{
+  "id": "summarize",
+  "author": "steipete",
+  "category": "productivity",
+  "tags": ["summarize", "pdf", "youtube", "web", "tldr"],
+  "homepage": "https://summarize.sh",
+  "emoji": "🧾",
+  "requires": { "bins": ["summarize"] }
+}

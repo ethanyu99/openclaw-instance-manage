@@ -572,6 +572,16 @@ export async function uninstallSkills(instanceId: string, skillIds: string[]): P
   return res.json();
 }
 
+export async function fetchSkillReadme(skillId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/skills/${skillId}/readme`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error('Skill not found');
+  }
+  return res.text();
+}
+
 // ── Auth API ──────────────────────────
 
 export async function loginWithGoogle(credential: string, clientUserId: string): Promise<{ token: string; user: AuthUser }> {

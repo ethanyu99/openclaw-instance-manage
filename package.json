@@ -10,7 +10,9 @@
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
     "start": "cd server && npm start",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "skills:sync": "npx tsx scripts/sync-skills.ts",
+    "skills:list": "npx tsx scripts/sync-skills.ts --list"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

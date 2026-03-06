@@ -11,10 +11,10 @@ import { Input } from '@/components/ui/input';
 import {
   Search, Download, Trash2, Loader2, CheckCircle2, XCircle,
   Package, Code, Globe, Monitor, Database, Wrench, MessageSquare,
-  Zap, HelpCircle, Image,
+  Zap, HelpCircle, Image, Eye, ArrowLeft,
 } from 'lucide-react';
 import type { InstancePublic, SkillDefinition, SkillCategory } from '@shared/types';
-import { fetchSkillRegistry, fetchInstanceSkills, installSkills, uninstallSkills } from '@/lib/api';
+import { fetchSkillRegistry, fetchInstanceSkills, installSkills, uninstallSkills, fetchSkillReadme } from '@/lib/api';
 
 interface SkillsManagerDialogProps {
   instance: InstancePublic;
@@ -57,6 +57,9 @@ export function SkillsManagerDialog({ instance, open, onOpenChange }: SkillsMana
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory | 'all'>('all');
   const [opState, setOpState] = useState<OperationState>({});
+  const [previewSkill, setPreviewSkill] = useState<SkillDefinition | null>(null);
+  const [previewContent, setPreviewContent] = useState<string>('');
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const isSandbox = !!instance.sandboxId;
 
@@ -82,8 +85,23 @@ export function SkillsManagerDialog({ instance, open, onOpenChange }: SkillsMana
       setSearchQuery('');
       setSelectedCategory('all');
       setOpState({});
+      setPreviewSkill(null);
+      setPreviewContent('');
     }
   }, [open, loadData]);
+
+  const handlePreview = async (skill: SkillDefinition) => {
+    setPreviewSkill(skill);
+    setPreviewLoading(true);
+    try {
+      const content = await fetchSkillReadme(skill.id);
+      setPreviewContent(content);
+    } catch {
+      setPreviewContent('Failed to load SKILL.md content.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const handleInstall = async (skillId: string) => {
     setOpState(prev => ({ ...prev, [skillId]: 'installing' }));
@@ -205,6 +223,34 @@ export function SkillsManagerDialog({ instance, open, onOpenChange }: SkillsMana
             <p className="text-sm">Skills install/uninstall requires a Sandbox instance</p>
             <p className="text-xs mt-1">Non-sandbox instances cannot write files via SDK</p>
           </div>
+        ) : previewSkill ? (
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 gap-1 text-xs"
+                onClick={() => setPreviewSkill(null)}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </Button>
+              <span className="font-medium text-sm">{previewSkill.name}</span>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5">
+                {CATEGORY_ICONS[previewSkill.category]}
+                {CATEGORY_LABELS[previewSkill.category]}
+              </Badge>
+            </div>
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
+                <pre className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono bg-muted/30 rounded-lg p-4 border">{previewContent}</pre>
+              </div>
+            )}
+          </div>
         ) : (
           <>
             <div className="flex items-center gap-2">
@@ -272,6 +318,7 @@ export function SkillsManagerDialog({ instance, open, onOpenChange }: SkillsMana
                         opState={opState[skill.id]}
                         onInstall={() => handleInstall(skill.id)}
                         onUninstall={() => handleUninstall(skill.id)}
+                        onPreview={() => handlePreview(skill)}
                       />
                     ))
                   )}
@@ -291,9 +338,10 @@ interface SkillCardProps {
   opState?: string;
   onInstall: () => void;
   onUninstall: () => void;
+  onPreview: () => void;
 }
 
-function SkillCard({ skill, installed, opState, onInstall, onUninstall }: SkillCardProps) {
+function SkillCard({ skill, installed, opState, onInstall, onUninstall, onPreview }: SkillCardProps) {
   const isOperating = opState === 'installing' || opState === 'uninstalling';
 
   return (
@@ -332,7 +380,7 @@ function SkillCard({ skill, installed, opState, onInstall, onUninstall }: SkillC
         )}
       </div>
 
-      <div className="shrink-0 mt-0.5">
+      <div className="shrink-0 mt-0.5 flex items-center gap-1">
         {opState === 'success' && (
           <CheckCircle2 className="h-5 w-5 text-emerald-500" />
         )}
@@ -342,27 +390,39 @@ function SkillCard({ skill, installed, opState, onInstall, onUninstall }: SkillC
         {isOperating && (
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         )}
-        {!opState && installed && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={onUninstall}
-            title="Uninstall"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
-        {!opState && !installed && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
-            onClick={onInstall}
-            title="Install"
-          >
-            <Download className="h-3.5 w-3.5" />
-          </Button>
+        {!opState && (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10"
+              onClick={onPreview}
+              title="View SKILL.md"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+            {installed ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={onUninstall}
+                title="Uninstall"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                onClick={onInstall}
+                title="Install"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>
