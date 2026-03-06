@@ -4,30 +4,30 @@ import { createSandbox, killSandbox } from '../sandbox';
 
 export const instanceRouter = Router();
 
-instanceRouter.get('/', (req, res) => {
+instanceRouter.get('/', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instances = store.getInstances(ownerId);
-  const stats = store.getStats(ownerId);
+  const instances = await store.getInstances(ownerId);
+  const stats = await store.getStats(ownerId);
   res.json({ instances, stats });
 });
 
-instanceRouter.get('/:id', (req, res) => {
+instanceRouter.get('/:id', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstance(ownerId, req.params.id);
+  const instance = await store.getInstance(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   res.json(instance);
 });
 
-instanceRouter.post('/', (req, res) => {
+instanceRouter.post('/', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { name, endpoint, description, token } = req.body;
   if (!name || !endpoint) {
     return res.status(400).json({ error: 'name and endpoint are required' });
   }
-  if (store.isNameTaken(ownerId, name)) {
+  if (await store.isNameTaken(ownerId, name)) {
     return res.status(400).json({ error: 'Instance name must be unique' });
   }
-  const instance = store.createInstance(ownerId, {
+  const instance = await store.createInstance(ownerId, {
     name,
     endpoint,
     description: description || '',
@@ -36,15 +36,15 @@ instanceRouter.post('/', (req, res) => {
   res.status(201).json(instance);
 });
 
-instanceRouter.put('/:id', (req, res) => {
+instanceRouter.put('/:id', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { name, endpoint, description, token } = req.body;
 
-  if (!store.getInstance(ownerId, req.params.id)) {
+  if (!await store.getInstance(ownerId, req.params.id)) {
     return res.status(404).json({ error: 'Instance not found' });
   }
 
-  if (name && store.isNameTaken(ownerId, name, req.params.id)) {
+  if (name && await store.isNameTaken(ownerId, name, req.params.id)) {
     return res.status(400).json({ error: 'Instance name must be unique' });
   }
   
@@ -54,14 +54,14 @@ instanceRouter.put('/:id', (req, res) => {
   if (description !== undefined) updateData.description = description;
   if (token !== undefined) updateData.token = token;
 
-  const instance = store.updateInstance(req.params.id, updateData);
+  const instance = await store.updateInstance(req.params.id, updateData);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   res.json(instance);
 });
 
 instanceRouter.delete('/:id', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.id);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   if (instance.sandboxId) {
@@ -72,7 +72,7 @@ instanceRouter.delete('/:id', async (req, res) => {
     }
   }
 
-  store.deleteInstance(req.params.id);
+  await store.deleteInstance(req.params.id);
   res.status(204).send();
 });
 
@@ -83,7 +83,7 @@ instanceRouter.post('/sandbox', async (req, res) => {
     return res.status(400).json({ error: 'name and apiKey are required' });
   }
 
-  if (store.isNameTaken(ownerId, name)) {
+  if (await store.isNameTaken(ownerId, name)) {
     return res.status(400).json({ error: 'Instance name must be unique' });
   }
 
@@ -96,7 +96,7 @@ instanceRouter.post('/sandbox', async (req, res) => {
     const result = await createSandbox(apiKey, gatewayToken || undefined, (progress) => {
       res.write(`data: ${JSON.stringify({ type: 'progress', step: progress.step, message: progress.message, detail: progress.detail })}\n\n`);
     });
-    const instance = store.createInstance(ownerId, {
+    const instance = await store.createInstance(ownerId, {
       name,
       endpoint: result.endpoint,
       description: description || '',
@@ -124,10 +124,10 @@ function toHttpBase(endpoint: string | undefined): string {
 
 instanceRouter.post('/:id/health', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.id);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   if (!instance.endpoint) {
-    store.updateInstance(instance.id, { status: 'offline' });
+    await store.updateInstance(instance.id, { status: 'offline' });
     return res.json({ status: 'offline', error: 'No endpoint configured' });
   }
 
@@ -146,14 +146,14 @@ instanceRouter.post('/:id/health', async (req, res) => {
     clearTimeout(timeout);
 
     if (response.ok) {
-      store.updateInstance(instance.id, { status: 'online' });
+      await store.updateInstance(instance.id, { status: 'online' });
       res.json({ status: 'online' });
     } else {
-      store.updateInstance(instance.id, { status: 'offline' });
+      await store.updateInstance(instance.id, { status: 'offline' });
       res.json({ status: 'offline' });
     }
   } catch {
-    store.updateInstance(instance.id, { status: 'offline' });
+    await store.updateInstance(instance.id, { status: 'offline' });
     res.json({ status: 'offline' });
   }
 });

@@ -8,7 +8,7 @@ export const sandboxFilesRouter = Router();
 const SANDBOX_KEEP_ALIVE_MS = 50 * 365 * 24 * 3600 * 1000;
 const ALLOWED_ROOT = '/home/user';
 const DEFAULT_ROOT = '/home/user/.openclaw/workspace';
-const MAX_READ_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_READ_SIZE = 2 * 1024 * 1024;
 
 async function connectSandbox(sandboxId: string, apiKey: string) {
   return Sandbox.connect(sandboxId, {
@@ -22,10 +22,9 @@ function isPathAllowed(targetPath: string): boolean {
   return normalized === ALLOWED_ROOT || normalized.startsWith(ALLOWED_ROOT + '/');
 }
 
-// List directory contents (depth=1 by default, lazy loading)
 sandboxFilesRouter.get('/:id/sandbox/files', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.id);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   if (!instance.sandboxId || !instance.apiKey) {
     return res.status(400).json({ error: 'Instance is not a sandbox instance' });
@@ -66,10 +65,9 @@ sandboxFilesRouter.get('/:id/sandbox/files', async (req, res) => {
   }
 });
 
-// Read file content
 sandboxFilesRouter.get('/:id/sandbox/files/read', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.id);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
   if (!instance.sandboxId || !instance.apiKey) {
     return res.status(400).json({ error: 'Instance is not a sandbox instance' });

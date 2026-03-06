@@ -8,13 +8,11 @@ import { searchSkillsMP, fetchRemoteSkillMd, isSkillsMPConfigured } from '../ski
 
 export const skillsRouter = Router();
 
-// GET /api/skills — list all available skills in the registry
 skillsRouter.get('/', (_req, res) => {
   const skills = getSkillRegistry();
   res.json({ skills });
 });
 
-// GET /api/skills/search?q=... — search skills
 skillsRouter.get('/search', (req, res) => {
   const q = (req.query.q as string) || '';
   if (!q) return res.json({ skills: getSkillRegistry() });
@@ -22,14 +20,10 @@ skillsRouter.get('/search', (req, res) => {
   res.json({ skills });
 });
 
-// ── Remote (SkillsMP) endpoints ──────────────────
-
-// GET /api/skills/remote/status — check if SkillsMP is configured
 skillsRouter.get('/remote/status', (_req, res) => {
   res.json({ configured: isSkillsMPConfigured() });
 });
 
-// GET /api/skills/remote/search?q=...&mode=keyword|ai — search SkillsMP
 skillsRouter.get('/remote/search', async (req, res) => {
   const q = (req.query.q as string) || '';
   if (!q) return res.status(400).json({ error: 'Query parameter q is required', code: 'MISSING_QUERY' });
@@ -46,7 +40,6 @@ skillsRouter.get('/remote/search', async (req, res) => {
   res.json(result.data);
 });
 
-// GET /api/skills/remote/content?url=... — fetch raw SKILL.md by its rawUrl
 skillsRouter.get('/remote/content', async (req, res) => {
   const rawUrl = req.query.url as string;
   if (!rawUrl) return res.status(400).json({ error: 'url query parameter is required' });
@@ -56,10 +49,9 @@ skillsRouter.get('/remote/content', async (req, res) => {
   res.type('text/markdown').send(content);
 });
 
-// POST /api/skills/instance/:instanceId/install-remote — install a remote skill
 skillsRouter.post('/instance/:instanceId/install-remote', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.instanceId);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.instanceId);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   if (!instance.sandboxId || !instance.apiKey) {
@@ -87,17 +79,15 @@ skillsRouter.post('/instance/:instanceId/install-remote', async (req, res) => {
   res.json(result);
 });
 
-// GET /api/skills/:id/readme — get raw SKILL.md content for preview
 skillsRouter.get('/:id/readme', (req, res) => {
   const content = skillLoader.getSkillMd(req.params.id);
   if (!content) return res.status(404).json({ error: 'Skill not found' });
   res.type('text/markdown').send(content);
 });
 
-// GET /api/skills/instance/:instanceId — get skills installed on an instance
 skillsRouter.get('/instance/:instanceId', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.instanceId);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.instanceId);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   const installed = await getSkillsByInstance(instance.id);
@@ -109,10 +99,9 @@ skillsRouter.get('/instance/:instanceId', async (req, res) => {
   res.json({ instanceId: instance.id, skills });
 });
 
-// POST /api/skills/instance/:instanceId/install — install skill(s) to an instance
 skillsRouter.post('/instance/:instanceId/install', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.instanceId);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.instanceId);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   if (!instance.sandboxId || !instance.apiKey) {
@@ -137,10 +126,9 @@ skillsRouter.post('/instance/:instanceId/install', async (req, res) => {
   res.json({ total: results.length, succeeded, failed, results });
 });
 
-// POST /api/skills/instance/:instanceId/uninstall — uninstall skill(s) from an instance
 skillsRouter.post('/instance/:instanceId/uninstall', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.instanceId);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.instanceId);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   if (!instance.sandboxId || !instance.apiKey) {
@@ -160,10 +148,9 @@ skillsRouter.post('/instance/:instanceId/uninstall', async (req, res) => {
   res.json({ total: results.length, succeeded, failed, results });
 });
 
-// POST /api/skills/instance/:instanceId/sync — sync DB records with actual sandbox state
 skillsRouter.post('/instance/:instanceId/sync', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.instanceId);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.instanceId);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   if (!instance.sandboxId || !instance.apiKey) {

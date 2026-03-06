@@ -37,8 +37,6 @@ function buildGitCredentialLine(pat: string, host: string, username: string) {
   return `https://${username}:${pat}@${host}`;
 }
 
-// ── Strategy 1: Sandbox SDK (direct file write) ──
-
 async function configureGitViaSdk(
   instance: Instance,
   payload: GitCredentialPayload,
@@ -77,8 +75,6 @@ async function configureGitViaSdk(
     return { instanceId: instance.id, instanceName: instance.name, success: false, verified: false, verifyMessage: '', method: 'sandbox_sdk', error: msg };
   }
 }
-
-// ── Strategy 2: Task dispatch (works for any instance) ──
 
 function buildGitConfigPrompt(payload: GitCredentialPayload): string {
   const { pat, username, gitName, gitEmail, host } = payload;
@@ -189,8 +185,6 @@ async function configureGitViaTask(
   }
 }
 
-// ── Unified configure function ──
-
 async function configureGitForInstance(
   instance: Instance,
   payload: GitCredentialPayload,
@@ -208,11 +202,9 @@ async function configureGitForInstance(
   };
 }
 
-// ── Single instance git configure ──
-
 instanceConfigRouter.post('/:id/sandbox/configure/git', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.id);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   const payload = req.body as GitCredentialPayload;
@@ -235,7 +227,7 @@ instanceConfigRouter.post('/:id/sandbox/configure/git', async (req, res) => {
 
 instanceConfigRouter.get('/:id/sandbox/configure/git/status', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const instance = store.getInstanceRawForOwner(ownerId, req.params.id);
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
   if (!instance) return res.status(404).json({ error: 'Instance not found' });
 
   if (instance.sandboxId && instance.apiKey) {
@@ -262,25 +254,26 @@ instanceConfigRouter.get('/:id/sandbox/configure/git/status', async (req, res) =
     }
   }
 
-  // Non-sandbox: we can't probe status without dispatching a task (too expensive)
   res.json({ hasCredentials: null, gitName: '', gitEmail: '', method: 'task' });
 });
 
-// ── Team-level batch git configure ──
-
 teamConfigRouter.post('/:id/configure/git', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) return res.status(404).json({ error: 'Team not found' });
 
   const payload = req.body as GitCredentialPayload;
   if (!payload.pat) return res.status(400).json({ error: 'pat is required' });
 
-  const instances = team.members
+  const instanceIds = team.members
     .map(m => m.instanceId)
-    .filter((id): id is string => !!id)
-    .map(id => store.getInstanceRawForOwner(ownerId, id))
-    .filter((inst): inst is Instance => !!inst && !!inst.endpoint);
+    .filter((id): id is string => !!id);
+
+  const instances: Instance[] = [];
+  for (const id of instanceIds) {
+    const inst = await store.getInstanceRawForOwner(ownerId, id);
+    if (inst && inst.endpoint) instances.push(inst);
+  }
 
   if (instances.length === 0) {
     return res.status(400).json({ error: 'No instances bound to this team' });
@@ -298,7 +291,7 @@ teamConfigRouter.post('/:id/configure/git', async (req, res) => {
 
 teamConfigRouter.get('/:id/configure/git/status', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) return res.status(404).json({ error: 'Team not found' });
 
   const roleStatuses = await Promise.all(
@@ -312,7 +305,7 @@ teamConfigRouter.get('/:id/configure/git/status', async (req, res) => {
         return { ...base, instanceId: null, instanceName: null, isSandbox: false, hasCredentials: false as boolean | null, gitName: '', gitEmail: '', reason: 'unbound' as const };
       }
 
-      const inst = store.getInstanceRawForOwner(ownerId, instanceId);
+      const inst = await store.getInstanceRawForOwner(ownerId, instanceId);
       if (!inst) {
         return { ...base, instanceId, instanceName: null, isSandbox: false, hasCredentials: false as boolean | null, gitName: '', gitEmail: '', reason: 'not_found' as const };
       }
@@ -345,7 +338,6 @@ teamConfigRouter.get('/:id/configure/git/status', async (req, res) => {
         }
       }
 
-      // Non-sandbox: can't cheaply check status
       return { ...base, instanceId: inst.id, instanceName: inst.name, isSandbox: false, hasCredentials: null, gitName: '', gitEmail: '', reason: null };
     }),
   );

@@ -20,7 +20,7 @@ OpenClaw 实例管理平台 —— 用于集中管理、监控和调度多个 Op
 | **前端** | React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui (Radix), Lucide Icons |
 | **后端** | Node.js, Express, TypeScript, WebSocket (ws) |
 | **沙箱** | Novita Sandbox SDK |
-| **存储** | JSON 文件持久化（实例数据）, localStorage（会话历史） |
+| **存储** | PostgreSQL (source of truth), Redis (缓存 + Pub/Sub), localStorage（会话历史） |
 | **上传** | 本地存储 / AWS S3 / Cloudflare R2 |
 | **部署** | Docker, Railway |
 
@@ -76,6 +76,8 @@ openclaw-instance-manage/
 
 - Node.js >= 20
 - npm
+- PostgreSQL
+- Redis
 
 ### 安装依赖
 
@@ -85,9 +87,15 @@ npm run install:all
 
 ### 配置环境变量
 
-在 `server/` 目录下创建 `.env` 文件：
+在项目根目录创建 `.env` 文件（参考 `.env.example`）：
 
 ```env
+# PostgreSQL 连接字符串
+DATABASE_URL=postgresql://user:password@localhost:5432/openclaw
+
+# Redis 连接字符串
+REDIS_URL=redis://localhost:6379
+
 # 服务端口（默认 3002）
 PORT=3002
 

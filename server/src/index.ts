@@ -23,6 +23,7 @@ import { setupWebSocket } from './ws';
 import { authMiddleware } from './auth';
 import { initDB } from './db';
 import { initStore, store } from './store';
+import { initRedis } from './redis';
 import { initSkillLoader } from './skill-loader';
 
 const app = express();
@@ -32,7 +33,6 @@ const PORT = parseInt(process.env.PORT || '3002', 10);
 app.use(cors());
 app.use(express.json());
 
-// Auth middleware for all API routes
 app.use('/api/instances', authMiddleware, instanceRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
 app.use('/api/teams', authMiddleware, teamRouter);
@@ -47,17 +47,13 @@ app.use('/api/auth', googleAuthRouter);
 app.use('/api/share/view', shareViewRouter);
 app.use('/api/share', authMiddleware, shareRouter);
 
-// Serve locally uploaded files
 const uploadsDir = path.join(process.cwd(), 'uploads');
 app.use('/api/uploads', express.static(uploadsDir));
 
-// Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Serve static files in production
-// In dev: tsx runs from server/src, compiled: runs from server/dist/server/src
 const clientDist = process.env.CLIENT_DIST_PATH
   || path.join(__dirname, '../../../client/dist');
 app.use(express.static(clientDist));
@@ -65,16 +61,17 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
-// WebSocket
 const wss = new WebSocketServer({ server, path: '/ws' });
-setupWebSocket(wss);
 
 async function start() {
   await initDB();
+  await initRedis();
   await initStore();
   initSkillLoader();
 
-  // Clean expired share tokens every hour
+  // WebSocket setup (after Redis is ready for pub/sub)
+  setupWebSocket(wss);
+
   setInterval(() => {
     store.cleanExpiredShareTokens();
   }, 3600000);

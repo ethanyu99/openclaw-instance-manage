@@ -6,8 +6,7 @@ const VALID_DURATIONS: ShareDuration[] = ['1h', '3h', '12h', '1d', '2d', '3d'];
 
 export const shareRouter = Router();
 
-// POST /api/share — create a share link (requires auth)
-shareRouter.post('/', (req, res) => {
+shareRouter.post('/', async (req, res) => {
   const userId = req.userContext!.userId;
   const { shareType, targetId, duration } = req.body as {
     shareType: string;
@@ -31,34 +30,32 @@ shareRouter.post('/', (req, res) => {
   }
 
   if (shareType === 'instance') {
-    const inst = store.getInstance(userId, targetId);
+    const inst = await store.getInstance(userId, targetId);
     if (!inst) {
       res.status(404).json({ error: 'Instance not found' });
       return;
     }
   } else {
-    const team = store.getTeam(userId, targetId);
+    const team = await store.getTeam(userId, targetId);
     if (!team) {
       res.status(404).json({ error: 'Team not found' });
       return;
     }
   }
 
-  const shareToken = store.createShareToken(userId, shareType, targetId, duration as ShareDuration);
+  const shareToken = await store.createShareToken(userId, shareType, targetId, duration as ShareDuration);
   res.json({ shareToken });
 });
 
-// GET /api/share — list own share tokens (requires auth)
-shareRouter.get('/', (req, res) => {
+shareRouter.get('/', async (req, res) => {
   const userId = req.userContext!.userId;
-  const tokens = store.getShareTokensByOwner(userId);
+  const tokens = await store.getShareTokensByOwner(userId);
   res.json({ shareTokens: tokens });
 });
 
-// DELETE /api/share/:id — revoke a share token (requires auth)
-shareRouter.delete('/:id', (req, res) => {
+shareRouter.delete('/:id', async (req, res) => {
   const userId = req.userContext!.userId;
-  const deleted = store.deleteShareToken(userId, req.params.id);
+  const deleted = await store.deleteShareToken(userId, req.params.id);
   if (!deleted) {
     res.status(404).json({ error: 'Share token not found' });
     return;
@@ -66,11 +63,10 @@ shareRouter.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /api/share/view/:token — resolve a share token (no auth required)
 export const shareViewRouter = Router();
 
-shareViewRouter.get('/:token', (req, res) => {
-  const st = store.getShareTokenByToken(req.params.token);
+shareViewRouter.get('/:token', async (req, res) => {
+  const st = await store.getShareTokenByToken(req.params.token);
   if (!st) {
     res.status(404).json({ error: 'Share link is invalid or expired' });
     return;
@@ -79,12 +75,11 @@ shareViewRouter.get('/:token', (req, res) => {
   const ownerShortId = st.ownerId.slice(0, 8);
 
   if (st.shareType === 'instance') {
-    const inst = store.getInstance(st.ownerId, st.targetId);
+    const inst = await store.getInstance(st.ownerId, st.targetId);
     if (!inst) {
       res.status(404).json({ error: 'Shared instance no longer exists' });
       return;
     }
-    // Hide sensitive endpoint info for shared view
     const safeInstance = { ...inst, endpoint: '***', hasToken: false };
     res.json({
       shareType: 'instance',
@@ -94,14 +89,14 @@ shareViewRouter.get('/:token', (req, res) => {
       expiresAt: st.expiresAt,
     });
   } else {
-    const team = store.getTeam(st.ownerId, st.targetId);
+    const team = await store.getTeam(st.ownerId, st.targetId);
     if (!team) {
       res.status(404).json({ error: 'Shared team no longer exists' });
       return;
     }
 
-    // Get all instances bound to this team
-    const teamInstances = store.getInstances(st.ownerId)
+    const allInstances = await store.getInstances(st.ownerId);
+    const teamInstances = allInstances
       .filter(i => i.teamId === st.targetId)
       .map(i => ({ ...i, endpoint: '***', hasToken: false }));
 

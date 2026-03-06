@@ -1,12 +1,9 @@
-import type { Instance, InstancePublic, TaskSummary, Team, TeamPublic, ClawRole, TeamMemberSlot, ShareToken, ShareDuration } from '../../shared/types';
+import type { Instance, InstancePublic, TaskSummary, Team, TeamPublic, ClawRole, ShareToken, ShareDuration } from '../../shared/types';
 import { v4 as uuid } from 'uuid';
 import crypto from 'crypto';
+import { getPool } from './db';
+import { getRedis } from './redis';
 import {
-  loadInstances,
-  loadTasks,
-  loadTeams,
-  loadRoles,
-  loadShareTokens,
   saveInstance,
   deleteInstanceFromDB,
   saveTask,
@@ -17,18 +14,11 @@ import {
   deleteRolesByTeam,
   saveShareToken,
   deleteShareTokenFromDB,
-  cleanExpiredShareTokens,
+  cleanExpiredShareTokens as cleanExpiredShareTokensDB,
   saveSession,
-  updateTaskOutput,
+  updateTaskOutput as updateTaskOutputDB,
 } from './persistence';
 import type { SessionRecord } from '../../shared/types';
-
-let instances: Map<string, Instance> = new Map();
-let tasks: Map<string, TaskSummary> = new Map();
-let teams: Map<string, Team> = new Map();
-let roles: Map<string, ClawRole> = new Map();
-let shareTokens: Map<string, ShareToken> = new Map();
-const shareTokenByToken: Map<string, string> = new Map(); // token string -> id
 
 const SHARE_DURATION_MS: Record<ShareDuration, number> = {
   '1h': 3600000,
@@ -38,119 +28,218 @@ const SHARE_DURATION_MS: Record<ShareDuration, number> = {
   '2d': 172800000,
   '3d': 259200000,
 };
-const rolesByTeam: Map<string, string[]> = new Map();
-const tasksByInstance: Map<string, string[]> = new Map();
-const sessionKeys: Map<string, string> = new Map();
-const teamSessions: Map<string, string> = new Map();
-const instanceTeamUsage: Set<string> = new Set();
-const MAX_TEAM_HISTORY = 10;
-const teamExecutionHistory: Map<string, Array<{ goal: string; summary: string; completedAt: string }>> = new Map();
 
-function toPublic(inst: Instance): InstancePublic {
+const MAX_TEAM_HISTORY = 10;
+
+const CACHE_TTL = 30; // seconds
+const STATUS_TTL = 120; // seconds — status survives a bit longer than health check interval
+
+function toPublic(inst: Instance, role?: ClawRole): InstancePublic {
   const { apiKey, ...rest } = inst;
-  const role = inst.roleId ? roles.get(inst.roleId) : undefined;
   return { ...rest, hasToken: !!inst.token, role };
 }
 
-function persistInstance(instance: Instance) {
-  saveInstance(instance).catch(err =>
-    console.error('[store] Failed to persist instance:', err)
-  );
+function rowToInstance(row: any): Instance {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name,
+    endpoint: row.endpoint,
+    token: row.token || undefined,
+    apiKey: row.api_key || undefined,
+    description: row.description || '',
+    sandboxId: row.sandbox_id || undefined,
+    teamId: row.team_id || undefined,
+    roleId: row.role_id || undefined,
+    status: 'offline',
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
 }
 
-function persistTask(task: TaskSummary & { output?: string }) {
-  saveTask(task).catch(err =>
-    console.error('[store] Failed to persist task:', err)
-  );
+function rowToTask(row: any): TaskSummary {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    instanceId: row.instance_id,
+    content: row.content,
+    status: row.status,
+    summary: row.summary || undefined,
+    sessionKey: row.session_key || undefined,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
+function rowToRole(row: any): ClawRole {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    capabilities: row.capabilities || [],
+    isLead: row.is_lead,
+  };
+}
+
+function rowToTeam(row: any): Team {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name,
+    description: row.description || '',
+    members: [],
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
+function rowToShareToken(row: any): ShareToken {
+  return {
+    id: row.id,
+    token: row.token,
+    ownerId: row.owner_id,
+    shareType: row.share_type,
+    targetId: row.target_id,
+    expiresAt: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
+// Redis cache helpers
+async function cacheGet<T>(key: string): Promise<T | null> {
+  try {
+    const val = await getRedis().get(key);
+    return val ? JSON.parse(val) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function cacheSet(key: string, value: unknown, ttl = CACHE_TTL): Promise<void> {
+  try {
+    await getRedis().set(key, JSON.stringify(value), 'EX', ttl);
+  } catch { /* best-effort */ }
+}
+
+async function cacheDel(key: string): Promise<void> {
+  try {
+    await getRedis().del(key);
+  } catch { /* best-effort */ }
+}
+
+async function invalidateOwnerCaches(ownerId: string): Promise<void> {
+  await Promise.all([
+    cacheDel(`ocm:instances:owner:${ownerId}`),
+    cacheDel(`ocm:stats:owner:${ownerId}`),
+  ]);
 }
 
 export async function initStore() {
-  teams = await loadTeams();
-  roles = await loadRoles();
-  instances = await loadInstances();
-  tasks = await loadTasks();
-  shareTokens = await loadShareTokens();
-
-  // Rebuild share token index
-  for (const st of shareTokens.values()) {
-    shareTokenByToken.set(st.token, st.id);
-  }
-
-  await rebuildTeamIndexes();
-
-  for (const id of instances.keys()) {
-    tasksByInstance.set(id, []);
-  }
-  for (const task of tasks.values()) {
-    const list = tasksByInstance.get(task.instanceId);
-    if (list) {
-      list.push(task.id);
-    }
-  }
-
-  for (const task of tasks.values()) {
-    if (task.status === 'running' || task.status === 'pending') {
-      task.status = 'failed';
-      task.summary = (task.summary || '') + '\n[Interrupted by server restart]';
-      task.updatedAt = new Date().toISOString();
-      persistTask(task);
-    }
-  }
-
-  console.log(`[store] Loaded ${teams.size} teams, ${roles.size} roles, ${instances.size} instances, ${tasks.size} tasks, ${shareTokens.size} share tokens from database`);
-}
-
-async function rebuildTeamIndexes() {
-  const { getPool } = require('./db') as typeof import('./db');
   const pool = getPool();
-  rolesByTeam.clear();
 
+  // Mark interrupted tasks
+  const result = await pool.query(
+    `UPDATE tasks SET status = 'failed', summary = COALESCE(summary, '') || E'\\n[Interrupted by server restart]', updated_at = NOW()
+     WHERE status IN ('running', 'pending')
+     RETURNING id`
+  );
+  if (result.rowCount && result.rowCount > 0) {
+    console.log(`[store] Marked ${result.rowCount} interrupted tasks as failed`);
+  }
+
+  // Flush stale Redis caches
   try {
-    const { rows } = await pool.query('SELECT id, team_id FROM roles');
-    for (const row of rows) {
-      const list = rolesByTeam.get(row.team_id) || [];
-      list.push(row.id);
-      rolesByTeam.set(row.team_id, list);
+    const redis = getRedis();
+    const keys = await redis.keys('ocm:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
     }
-  } catch (err) {
-    console.error('[store] Failed to rebuild role indexes:', err);
-  }
+  } catch { /* Redis may not be available yet */ }
 
-  // Rebuild team members from instances
-  for (const team of teams.values()) {
-    const teamRoleIds = rolesByTeam.get(team.id) || [];
-    team.members = teamRoleIds.map(roleId => {
-      const boundInstance = Array.from(instances.values()).find(
-        i => i.teamId === team.id && i.roleId === roleId
-      );
-      return { roleId, instanceId: boundInstance?.id };
-    });
-  }
+  console.log('[store] Initialized (DB-first mode)');
 }
 
 export const store = {
-  getInstances(ownerId: string): InstancePublic[] {
-    return Array.from(instances.values())
-      .filter(i => i.ownerId === ownerId)
-      .map(toPublic);
+  // ── Instance operations ──────────────────
+
+  async getInstances(ownerId: string): Promise<InstancePublic[]> {
+    const cacheKey = `ocm:instances:owner:${ownerId}`;
+    const cached = await cacheGet<InstancePublic[]>(cacheKey);
+    if (cached) return cached;
+
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT i.*, r.id as r_id, r.name as r_name, r.description as r_desc, r.capabilities as r_caps, r.is_lead as r_is_lead
+       FROM instances i
+       LEFT JOIN roles r ON i.role_id = r.id
+       WHERE i.owner_id = $1
+       ORDER BY i.created_at ASC`,
+      [ownerId]
+    );
+
+    const redis = getRedis();
+    const result: InstancePublic[] = [];
+    for (const row of rows) {
+      const inst = rowToInstance(row);
+      const statusStr = await redis.get(`ocm:instance:status:${inst.id}`);
+      if (statusStr) inst.status = statusStr as Instance['status'];
+
+      const currentTaskStr = await redis.get(`ocm:instance:currentTask:${inst.id}`);
+      if (currentTaskStr) inst.currentTask = JSON.parse(currentTaskStr);
+
+      const role = row.r_id ? rowToRole({ id: row.r_id, name: row.r_name, description: row.r_desc, capabilities: row.r_caps, is_lead: row.r_is_lead }) : undefined;
+      result.push(toPublic(inst, role));
+    }
+
+    await cacheSet(cacheKey, result);
+    return result;
   },
 
-  getInstanceRaw(id: string): Instance | undefined {
-    return instances.get(id);
+  async getInstanceRaw(id: string): Promise<Instance | undefined> {
+    const cacheKey = `ocm:instance:raw:${id}`;
+    const cached = await cacheGet<Instance>(cacheKey);
+    if (cached) {
+      const statusStr = await getRedis().get(`ocm:instance:status:${id}`);
+      if (statusStr) cached.status = statusStr as Instance['status'];
+      const ctStr = await getRedis().get(`ocm:instance:currentTask:${id}`);
+      if (ctStr) cached.currentTask = JSON.parse(ctStr);
+      return cached;
+    }
+
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM instances WHERE id = $1', [id]);
+    if (rows.length === 0) return undefined;
+
+    const inst = rowToInstance(rows[0]);
+    const redis = getRedis();
+    const statusStr = await redis.get(`ocm:instance:status:${inst.id}`);
+    if (statusStr) inst.status = statusStr as Instance['status'];
+    const ctStr = await redis.get(`ocm:instance:currentTask:${inst.id}`);
+    if (ctStr) inst.currentTask = JSON.parse(ctStr);
+
+    await cacheSet(cacheKey, inst);
+    return inst;
   },
 
-  getInstanceRawForOwner(ownerId: string, id: string): Instance | undefined {
-    const inst = instances.get(id);
+  async getInstanceRawForOwner(ownerId: string, id: string): Promise<Instance | undefined> {
+    const inst = await this.getInstanceRaw(id);
     return inst?.ownerId === ownerId ? inst : undefined;
   },
 
-  getInstance(ownerId: string, id: string): InstancePublic | undefined {
-    const inst = instances.get(id);
+  async getInstance(ownerId: string, id: string): Promise<InstancePublic | undefined> {
+    const inst = await this.getInstanceRaw(id);
     if (!inst || inst.ownerId !== ownerId) return undefined;
-    return toPublic(inst);
+
+    const pool = getPool();
+    let role: ClawRole | undefined;
+    if (inst.roleId) {
+      const { rows } = await pool.query('SELECT * FROM roles WHERE id = $1', [inst.roleId]);
+      if (rows.length > 0) role = rowToRole(rows[0]);
+    }
+    return toPublic(inst, role);
   },
 
-  createInstance(ownerId: string, data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string; sandboxId?: string; apiKey?: string }): InstancePublic {
+  async createInstance(ownerId: string, data: Pick<Instance, 'name' | 'endpoint' | 'description'> & { token?: string; sandboxId?: string; apiKey?: string }): Promise<InstancePublic> {
     const id = uuid();
     const now = new Date().toISOString();
     const instance: Instance = {
@@ -161,63 +250,107 @@ export const store = {
       createdAt: now,
       updatedAt: now,
     };
-    instances.set(id, instance);
-    tasksByInstance.set(id, []);
-    persistInstance(instance);
+    await saveInstance(instance);
+    await invalidateOwnerCaches(ownerId);
     return toPublic(instance);
   },
 
-  isNameTaken(ownerId: string, name: string, excludeId?: string): boolean {
-    return Array.from(instances.values()).some(
-      i => i.ownerId === ownerId && i.name === name && i.id !== excludeId,
+  async isNameTaken(ownerId: string, name: string, excludeId?: string): Promise<boolean> {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      'SELECT 1 FROM instances WHERE owner_id = $1 AND name = $2 AND id != $3 LIMIT 1',
+      [ownerId, name, excludeId || '']
     );
+    return rows.length > 0;
   },
 
-  updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token' | 'sandboxId' | 'teamId' | 'roleId'>>): InstancePublic | undefined {
-    const instance = instances.get(id);
-    if (!instance) return undefined;
+  async updateInstance(id: string, data: Partial<Pick<Instance, 'name' | 'endpoint' | 'description' | 'status' | 'currentTask' | 'token' | 'sandboxId' | 'teamId' | 'roleId'>>): Promise<InstancePublic | undefined> {
+    const redis = getRedis();
 
-    const updateData: Partial<Instance> = { ...data, updatedAt: new Date().toISOString() };
-    if (data.token === '') {
-      updateData.token = undefined;
+    // Handle ephemeral state in Redis
+    if (data.status !== undefined) {
+      await redis.set(`ocm:instance:status:${id}`, data.status, 'EX', STATUS_TTL);
+    }
+    if (data.currentTask !== undefined) {
+      if (data.currentTask) {
+        await redis.set(`ocm:instance:currentTask:${id}`, JSON.stringify(data.currentTask), 'EX', STATUS_TTL);
+      } else {
+        await redis.del(`ocm:instance:currentTask:${id}`);
+      }
     }
 
-    const updated = { ...instance, ...updateData };
-    instances.set(id, updated);
-
+    // Persist config changes to DB
     const hasConfigChange = data.name !== undefined || data.endpoint !== undefined
       || data.description !== undefined || data.token !== undefined || data.sandboxId !== undefined
       || data.teamId !== undefined || data.roleId !== undefined;
+
     if (hasConfigChange) {
-      persistInstance(updated);
+      const inst = await this.getInstanceRaw(id);
+      if (!inst) return undefined;
+
+      const updateData: Partial<Instance> = { ...data, updatedAt: new Date().toISOString() };
+      if (data.token === '') updateData.token = undefined;
+      delete (updateData as any).status;
+      delete (updateData as any).currentTask;
+
+      const updated = { ...inst, ...updateData };
+      await saveInstance(updated);
+      await cacheDel(`ocm:instance:raw:${id}`);
+      await invalidateOwnerCaches(inst.ownerId);
+    } else {
+      // Just invalidate cache for status/currentTask changes
+      await cacheDel(`ocm:instance:raw:${id}`);
+      // Need ownerId for cache invalidation
+      const pool = getPool();
+      const { rows } = await pool.query('SELECT owner_id FROM instances WHERE id = $1', [id]);
+      if (rows.length > 0) await invalidateOwnerCaches(rows[0].owner_id);
     }
-    return toPublic(updated);
+
+    return await this.getInstance(
+      (await this.getInstanceRaw(id))?.ownerId || '',
+      id
+    );
   },
 
-  deleteInstance(id: string): boolean {
-    tasksByInstance.delete(id);
-    const deleted = instances.delete(id);
-    if (deleted) {
-      deleteInstanceFromDB(id).catch(err =>
-        console.error('[store] Failed to delete instance from DB:', err)
-      );
-    }
-    return deleted;
+  async deleteInstance(id: string): Promise<boolean> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT owner_id FROM instances WHERE id = $1', [id]);
+    if (rows.length === 0) return false;
+
+    const ownerId = rows[0].owner_id;
+    await deleteInstanceFromDB(id);
+    await cacheDel(`ocm:instance:raw:${id}`);
+    await getRedis().del(`ocm:instance:status:${id}`, `ocm:instance:currentTask:${id}`);
+    await invalidateOwnerCaches(ownerId);
+    return true;
   },
 
-  getTasks(ownerId: string, instanceId?: string): TaskSummary[] {
+  // ── Task operations ──────────────────
+
+  async getTasks(ownerId: string, instanceId?: string): Promise<TaskSummary[]> {
+    const pool = getPool();
+    let query: string;
+    let params: string[];
+
     if (instanceId) {
-      const ids = tasksByInstance.get(instanceId) || [];
-      return ids.map(id => tasks.get(id)!).filter(t => t && t.ownerId === ownerId);
+      query = 'SELECT * FROM tasks WHERE owner_id = $1 AND instance_id = $2 ORDER BY created_at ASC';
+      params = [ownerId, instanceId];
+    } else {
+      query = 'SELECT * FROM tasks WHERE owner_id = $1 ORDER BY created_at ASC';
+      params = [ownerId];
     }
-    return Array.from(tasks.values()).filter(t => t.ownerId === ownerId);
+
+    const { rows } = await pool.query(query, params);
+    return rows.map(rowToTask);
   },
 
-  getTask(id: string): TaskSummary | undefined {
-    return tasks.get(id);
+  async getTask(id: string): Promise<TaskSummary | undefined> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    return rows.length > 0 ? rowToTask(rows[0]) : undefined;
   },
 
-  createTask(ownerId: string, instanceId: string, content: string, taskId?: string, sessionKey?: string): TaskSummary {
+  async createTask(ownerId: string, instanceId: string, content: string, taskId?: string, sessionKey?: string): Promise<TaskSummary> {
     const id = taskId || uuid();
     const now = new Date().toISOString();
     const task: TaskSummary = {
@@ -230,124 +363,150 @@ export const store = {
       createdAt: now,
       updatedAt: now,
     };
-    tasks.set(id, task);
-    const instanceTasks = tasksByInstance.get(instanceId) || [];
-    instanceTasks.push(id);
-    tasksByInstance.set(instanceId, instanceTasks);
+    await saveTask(task);
 
-    const instance = instances.get(instanceId);
-    if (instance) {
-      instances.set(instanceId, { ...instance, currentTask: task, updatedAt: now });
-    }
+    // Update instance currentTask in Redis
+    const redis = getRedis();
+    await redis.set(`ocm:instance:currentTask:${instanceId}`, JSON.stringify(task), 'EX', STATUS_TTL);
+    await cacheDel(`ocm:instance:raw:${instanceId}`);
+    await invalidateOwnerCaches(ownerId);
 
-    persistTask(task);
     return task;
   },
 
-  updateTask(id: string, data: Partial<Pick<TaskSummary, 'status' | 'summary'>>): TaskSummary | undefined {
-    const task = tasks.get(id);
-    if (!task) return undefined;
-    const updated = { ...task, ...data, updatedAt: new Date().toISOString() };
-    tasks.set(id, updated);
+  async updateTask(id: string, data: Partial<Pick<TaskSummary, 'status' | 'summary'>>): Promise<TaskSummary | undefined> {
+    const pool = getPool();
+    const { rows: existingRows } = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (existingRows.length === 0) return undefined;
 
-    if (data.status === 'completed' || data.status === 'failed') {
-      const instance = instances.get(task.instanceId);
-      if (instance && instance.currentTask?.id === id) {
-        instances.set(task.instanceId, {
-          ...instance,
-          currentTask: updated,
-          status: 'online',
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    } else {
-      const instance = instances.get(task.instanceId);
-      if (instance) {
-        instances.set(task.instanceId, {
-          ...instance,
-          currentTask: updated,
-          updatedAt: new Date().toISOString(),
-        });
-      }
+    const existing = rowToTask(existingRows[0]);
+    const updated = { ...existing, ...data, updatedAt: new Date().toISOString() };
+    await saveTask(updated);
+
+    // Update instance currentTask
+    const redis = getRedis();
+    await redis.set(`ocm:instance:currentTask:${updated.instanceId}`, JSON.stringify(updated), 'EX', STATUS_TTL);
+
+    if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+      await redis.set(`ocm:instance:status:${updated.instanceId}`, 'online', 'EX', STATUS_TTL);
     }
 
-    persistTask(updated);
+    await cacheDel(`ocm:instance:raw:${updated.instanceId}`);
+    await invalidateOwnerCaches(updated.ownerId);
+
     return updated;
   },
 
-  getStats(ownerId: string) {
-    const all = Array.from(instances.values()).filter(i => i.ownerId === ownerId);
-    return {
-      total: all.length,
-      online: all.filter(i => i.status === 'online').length,
-      busy: all.filter(i => i.status === 'busy').length,
-      offline: all.filter(i => i.status === 'offline').length,
+  async getStats(ownerId: string) {
+    const cacheKey = `ocm:stats:owner:${ownerId}`;
+    const cached = await cacheGet<{ total: number; online: number; busy: number; offline: number }>(cacheKey);
+    if (cached) return cached;
+
+    const instances = await this.getInstances(ownerId);
+    const stats = {
+      total: instances.length,
+      online: instances.filter(i => i.status === 'online').length,
+      busy: instances.filter(i => i.status === 'busy').length,
+      offline: instances.filter(i => i.status === 'offline').length,
     };
+    await cacheSet(cacheKey, stats, 10);
+    return stats;
   },
 
-  getSessionKey(ownerId: string, instanceId: string): string {
-    const compositeKey = `${ownerId}:${instanceId}`;
-    const existing = sessionKeys.get(compositeKey);
+  // ── Session keys (Redis-backed) ──────────────────
+
+  async getSessionKey(ownerId: string, instanceId: string): Promise<string> {
+    const redisKey = `ocm:session:${ownerId}:${instanceId}`;
+    const existing = await getRedis().get(redisKey);
     if (existing) return existing;
+
     const key = `${ownerId}-${instanceId}`;
-    sessionKeys.set(compositeKey, key);
+    await getRedis().set(redisKey, key);
     return key;
   },
 
-  resetSessionKey(ownerId: string, instanceId: string): string {
-    const compositeKey = `${ownerId}:${instanceId}`;
+  async resetSessionKey(ownerId: string, instanceId: string): Promise<string> {
+    const redisKey = `ocm:session:${ownerId}:${instanceId}`;
     const key = `${ownerId}-${instanceId}-${Date.now()}`;
-    sessionKeys.set(compositeKey, key);
-    instanceTeamUsage.delete(compositeKey);
+    await getRedis().set(redisKey, key);
+    await getRedis().del(`ocm:teamUsage:${ownerId}:${instanceId}`);
     return key;
   },
 
-  markUsedByTeam(ownerId: string, instanceId: string): void {
-    instanceTeamUsage.add(`${ownerId}:${instanceId}`);
+  async markUsedByTeam(ownerId: string, instanceId: string): Promise<void> {
+    await getRedis().set(`ocm:teamUsage:${ownerId}:${instanceId}`, '1', 'EX', 86400);
   },
 
-  wasUsedByTeam(ownerId: string, instanceId: string): boolean {
-    return instanceTeamUsage.has(`${ownerId}:${instanceId}`);
+  async wasUsedByTeam(ownerId: string, instanceId: string): Promise<boolean> {
+    const val = await getRedis().get(`ocm:teamUsage:${ownerId}:${instanceId}`);
+    return val === '1';
   },
 
-  getOwnerByInstanceId(instanceId: string): string | undefined {
-    return instances.get(instanceId)?.ownerId;
+  async getOwnerByInstanceId(instanceId: string): Promise<string | undefined> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT owner_id FROM instances WHERE id = $1', [instanceId]);
+    return rows.length > 0 ? rows[0].owner_id : undefined;
   },
 
-  getAllInstancesRaw(): Instance[] {
-    return Array.from(instances.values());
+  async getAllInstancesRaw(): Promise<Instance[]> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM instances');
+    const redis = getRedis();
+    const instances: Instance[] = [];
+    for (const row of rows) {
+      const inst = rowToInstance(row);
+      const statusStr = await redis.get(`ocm:instance:status:${inst.id}`);
+      if (statusStr) inst.status = statusStr as Instance['status'];
+      instances.push(inst);
+    }
+    return instances;
   },
 
   // ── Team operations ──────────────────
 
-  getTeams(ownerId: string): TeamPublic[] {
-    return Array.from(teams.values())
-      .filter(t => t.ownerId === ownerId)
-      .map(t => this.toTeamPublic(t));
+  async getTeams(ownerId: string): Promise<TeamPublic[]> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM teams WHERE owner_id = $1 ORDER BY created_at ASC', [ownerId]);
+    const teams: TeamPublic[] = [];
+    for (const row of rows) {
+      const team = rowToTeam(row);
+      teams.push(await this.buildTeamPublic(team));
+    }
+    return teams;
   },
 
-  getTeam(ownerId: string, id: string): TeamPublic | undefined {
-    const team = teams.get(id);
-    if (!team || team.ownerId !== ownerId) return undefined;
-    return this.toTeamPublic(team);
+  async getTeam(ownerId: string, id: string): Promise<TeamPublic | undefined> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM teams WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (rows.length === 0) return undefined;
+    const team = rowToTeam(rows[0]);
+    return await this.buildTeamPublic(team);
   },
 
-  toTeamPublic(team: Team): TeamPublic {
-    const teamRoleIds = rolesByTeam.get(team.id) || [];
-    const teamRoles = teamRoleIds
-      .map(rid => roles.get(rid))
-      .filter((r): r is ClawRole => !!r);
-    // Refresh members with current instance bindings
-    team.members = teamRoleIds.map(roleId => {
-      const boundInstance = Array.from(instances.values()).find(
-        i => i.teamId === team.id && i.roleId === roleId
-      );
-      return { roleId, instanceId: boundInstance?.id };
-    });
-    return { ...team, roles: teamRoles };
+  async buildTeamPublic(team: Team): Promise<TeamPublic> {
+    const pool = getPool();
+    const { rows: roleRows } = await pool.query('SELECT * FROM roles WHERE team_id = $1 ORDER BY created_at ASC', [team.id]);
+    const roles = roleRows.map(rowToRole);
+
+    // Build members from instance bindings
+    const { rows: instanceRows } = await pool.query(
+      'SELECT id, role_id FROM instances WHERE team_id = $1 AND role_id IS NOT NULL',
+      [team.id]
+    );
+    const instanceByRole = new Map<string, string>();
+    for (const row of instanceRows) {
+      instanceByRole.set(row.role_id, row.id);
+    }
+
+    team.members = roles.map(r => ({
+      roleId: r.id,
+      instanceId: instanceByRole.get(r.id),
+    }));
+
+    return { ...team, roles };
   },
 
-  createTeam(ownerId: string, data: { name: string; description: string }, roleDefs: Omit<ClawRole, 'id'>[]): TeamPublic {
+  async createTeam(ownerId: string, data: { name: string; description: string }, roleDefs: Omit<ClawRole, 'id'>[]): Promise<TeamPublic> {
     const teamId = uuid();
     const now = new Date().toISOString();
     const team: Team = {
@@ -359,204 +518,193 @@ export const store = {
       createdAt: now,
       updatedAt: now,
     };
-    teams.set(teamId, team);
-    saveTeam(team).catch(err => console.error('[store] Failed to persist team:', err));
+    await saveTeam(team);
 
     const createdRoles: ClawRole[] = [];
-    const teamRoleIds: string[] = [];
     for (const def of roleDefs) {
       const roleId = uuid();
       const role: ClawRole = { id: roleId, ...def };
-      roles.set(roleId, role);
-      teamRoleIds.push(roleId);
+      await saveRole(role, teamId);
       createdRoles.push(role);
-      saveRole(role, teamId).catch(err => console.error('[store] Failed to persist role:', err));
     }
-    rolesByTeam.set(teamId, teamRoleIds);
 
-    team.members = teamRoleIds.map(roleId => ({ roleId }));
+    team.members = createdRoles.map(r => ({ roleId: r.id }));
     return { ...team, roles: createdRoles };
   },
 
-  updateTeam(id: string, data: Partial<Pick<Team, 'name' | 'description'>>): TeamPublic | undefined {
-    const team = teams.get(id);
-    if (!team) return undefined;
+  async updateTeam(id: string, data: Partial<Pick<Team, 'name' | 'description'>>): Promise<TeamPublic | undefined> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM teams WHERE id = $1', [id]);
+    if (rows.length === 0) return undefined;
+
+    const team = rowToTeam(rows[0]);
     const updated = { ...team, ...data, updatedAt: new Date().toISOString() };
-    teams.set(id, updated);
-    saveTeam(updated).catch(err => console.error('[store] Failed to persist team:', err));
-    return this.toTeamPublic(updated);
+    await saveTeam(updated);
+    return await this.buildTeamPublic(updated);
   },
 
-  deleteTeam(id: string): boolean {
-    const team = teams.get(id);
-    if (!team) return false;
+  async deleteTeam(id: string): Promise<boolean> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM teams WHERE id = $1', [id]);
+    if (rows.length === 0) return false;
 
-    // Unbind instances from this team
-    for (const inst of instances.values()) {
-      if (inst.teamId === id) {
-        const updated = { ...inst, teamId: undefined, roleId: undefined, updatedAt: new Date().toISOString() };
-        instances.set(inst.id, updated);
-        saveInstance(updated).catch(err => console.error('[store] Failed to persist instance:', err));
-      }
-    }
+    const ownerId = rows[0].owner_id;
 
-    // Remove roles
-    const teamRoleIds = rolesByTeam.get(id) || [];
-    for (const rid of teamRoleIds) {
-      roles.delete(rid);
-    }
-    rolesByTeam.delete(id);
-    deleteRolesByTeam(id).catch(err => console.error('[store] Failed to delete roles:', err));
+    // Unbind instances
+    await pool.query(
+      'UPDATE instances SET team_id = NULL, role_id = NULL, updated_at = NOW() WHERE team_id = $1',
+      [id]
+    );
 
-    teams.delete(id);
-    deleteTeamFromDB(id).catch(err => console.error('[store] Failed to delete team:', err));
+    await deleteRolesByTeam(id);
+    await deleteTeamFromDB(id);
+    await invalidateOwnerCaches(ownerId);
     return true;
   },
 
-  isTeamNameTaken(ownerId: string, name: string, excludeId?: string): boolean {
-    return Array.from(teams.values()).some(
-      t => t.ownerId === ownerId && t.name === name && t.id !== excludeId
+  async isTeamNameTaken(ownerId: string, name: string, excludeId?: string): Promise<boolean> {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      'SELECT 1 FROM teams WHERE owner_id = $1 AND name = $2 AND id != $3 LIMIT 1',
+      [ownerId, name, excludeId || '']
     );
+    return rows.length > 0;
   },
 
   // ── Role operations ──────────────────
 
-  getRole(id: string): ClawRole | undefined {
-    return roles.get(id);
+  async getRole(id: string): Promise<ClawRole | undefined> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM roles WHERE id = $1', [id]);
+    return rows.length > 0 ? rowToRole(rows[0]) : undefined;
   },
 
-  getRolesByTeam(teamId: string): ClawRole[] {
-    const ids = rolesByTeam.get(teamId) || [];
-    return ids.map(id => roles.get(id)).filter((r): r is ClawRole => !!r);
+  async getRolesByTeam(teamId: string): Promise<ClawRole[]> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM roles WHERE team_id = $1 ORDER BY created_at ASC', [teamId]);
+    return rows.map(rowToRole);
   },
 
-  addRoleToTeam(teamId: string, roleDef: Omit<ClawRole, 'id'>): ClawRole | undefined {
-    const team = teams.get(teamId);
-    if (!team) return undefined;
+  async addRoleToTeam(teamId: string, roleDef: Omit<ClawRole, 'id'>): Promise<ClawRole | undefined> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM teams WHERE id = $1', [teamId]);
+    if (rows.length === 0) return undefined;
 
     const roleId = uuid();
     const role: ClawRole = { id: roleId, ...roleDef };
-    roles.set(roleId, role);
+    await saveRole(role, teamId);
 
-    const teamRoleIds = rolesByTeam.get(teamId) || [];
-    teamRoleIds.push(roleId);
-    rolesByTeam.set(teamId, teamRoleIds);
-
-    team.members.push({ roleId });
+    const team = rowToTeam(rows[0]);
     team.updatedAt = new Date().toISOString();
-    teams.set(teamId, team);
+    await saveTeam(team);
 
-    saveRole(role, teamId).catch(err => console.error('[store] Failed to persist role:', err));
-    saveTeam(team).catch(err => console.error('[store] Failed to persist team:', err));
     return role;
   },
 
-  updateRole(teamId: string, roleId: string, data: Partial<Omit<ClawRole, 'id'>>): ClawRole | undefined {
-    const team = teams.get(teamId);
-    if (!team) return undefined;
-    const teamRoleIds = rolesByTeam.get(teamId) || [];
-    if (!teamRoleIds.includes(roleId)) return undefined;
+  async updateRole(teamId: string, roleId: string, data: Partial<Omit<ClawRole, 'id'>>): Promise<ClawRole | undefined> {
+    const pool = getPool();
+    const { rows: teamRows } = await pool.query('SELECT * FROM teams WHERE id = $1', [teamId]);
+    if (teamRows.length === 0) return undefined;
 
-    const role = roles.get(roleId);
-    if (!role) return undefined;
+    const { rows: roleRows } = await pool.query('SELECT * FROM roles WHERE id = $1 AND team_id = $2', [roleId, teamId]);
+    if (roleRows.length === 0) return undefined;
 
-    const updated: ClawRole = { ...role, ...data };
-    roles.set(roleId, updated);
+    const existing = rowToRole(roleRows[0]);
+    const updated: ClawRole = { ...existing, ...data };
+    await saveRole(updated, teamId);
 
+    const team = rowToTeam(teamRows[0]);
     team.updatedAt = new Date().toISOString();
-    teams.set(teamId, team);
+    await saveTeam(team);
 
-    saveRole(updated, teamId).catch(err => console.error('[store] Failed to persist role:', err));
-    saveTeam(team).catch(err => console.error('[store] Failed to persist team:', err));
     return updated;
   },
 
-  deleteRole(teamId: string, roleId: string): boolean {
-    const team = teams.get(teamId);
-    if (!team) return false;
-    const teamRoleIds = rolesByTeam.get(teamId) || [];
-    if (!teamRoleIds.includes(roleId)) return false;
+  async deleteRole(teamId: string, roleId: string): Promise<boolean> {
+    const pool = getPool();
+    const { rows: teamRows } = await pool.query('SELECT * FROM teams WHERE id = $1', [teamId]);
+    if (teamRows.length === 0) return false;
 
-    // Unbind any instance from this role
-    for (const inst of instances.values()) {
-      if (inst.teamId === teamId && inst.roleId === roleId) {
-        const updated = { ...inst, teamId: undefined, roleId: undefined, updatedAt: new Date().toISOString() };
-        instances.set(inst.id, updated);
-        saveInstance(updated).catch(err => console.error('[store] Failed to persist instance:', err));
-      }
-    }
+    const { rows: roleRows } = await pool.query('SELECT * FROM roles WHERE id = $1 AND team_id = $2', [roleId, teamId]);
+    if (roleRows.length === 0) return false;
 
-    roles.delete(roleId);
-    rolesByTeam.set(teamId, teamRoleIds.filter(id => id !== roleId));
-    team.members = team.members.filter(m => m.roleId !== roleId);
+    // Unbind instances from this role
+    await pool.query(
+      'UPDATE instances SET team_id = NULL, role_id = NULL, updated_at = NOW() WHERE team_id = $1 AND role_id = $2',
+      [teamId, roleId]
+    );
+
+    await deleteRoleFromDB(roleId);
+
+    const team = rowToTeam(teamRows[0]);
     team.updatedAt = new Date().toISOString();
-    teams.set(teamId, team);
+    await saveTeam(team);
 
-    deleteRoleFromDB(roleId).catch(err => console.error('[store] Failed to delete role:', err));
-    saveTeam(team).catch(err => console.error('[store] Failed to persist team:', err));
+    const ownerId = teamRows[0].owner_id;
+    await invalidateOwnerCaches(ownerId);
     return true;
   },
 
   // ── Instance-Team binding ────────────
 
-  bindInstanceToRole(instanceId: string, teamId: string, roleId: string): InstancePublic | undefined {
-    const inst = instances.get(instanceId);
-    if (!inst) return undefined;
-    const team = teams.get(teamId);
-    if (!team) return undefined;
-    const role = roles.get(roleId);
-    if (!role) return undefined;
+  async bindInstanceToRole(instanceId: string, teamId: string, roleId: string): Promise<InstancePublic | undefined> {
+    const pool = getPool();
 
-    // Unbind any other instance from this role in this team
-    for (const other of instances.values()) {
-      if (other.teamId === teamId && other.roleId === roleId && other.id !== instanceId) {
-        const updated = { ...other, teamId: undefined, roleId: undefined, updatedAt: new Date().toISOString() };
-        instances.set(other.id, updated);
-        saveInstance(updated).catch(err => console.error('[store] Failed to persist instance:', err));
-      }
-    }
+    // Verify all entities exist
+    const { rows: instRows } = await pool.query('SELECT * FROM instances WHERE id = $1', [instanceId]);
+    if (instRows.length === 0) return undefined;
+    const { rows: teamRows } = await pool.query('SELECT 1 FROM teams WHERE id = $1', [teamId]);
+    if (teamRows.length === 0) return undefined;
+    const { rows: roleRows } = await pool.query('SELECT 1 FROM roles WHERE id = $1', [roleId]);
+    if (roleRows.length === 0) return undefined;
 
-    return this.updateInstance(instanceId, { teamId, roleId });
+    // Unbind any other instance from this role
+    await pool.query(
+      'UPDATE instances SET team_id = NULL, role_id = NULL, updated_at = NOW() WHERE team_id = $1 AND role_id = $2 AND id != $3',
+      [teamId, roleId, instanceId]
+    );
+
+    return await this.updateInstance(instanceId, { teamId, roleId });
   },
 
-  unbindInstanceFromTeam(instanceId: string): InstancePublic | undefined {
-    return this.updateInstance(instanceId, { teamId: undefined, roleId: undefined });
+  async unbindInstanceFromTeam(instanceId: string): Promise<InstancePublic | undefined> {
+    return await this.updateInstance(instanceId, { teamId: undefined, roleId: undefined });
   },
 
-  // ── Team session management ─────────
+  // ── Team session management (Redis) ─────────
 
-  getTeamSessionKey(ownerId: string, teamId: string, instanceId: string): string {
-    const teamKey = `${ownerId}:${teamId}`;
-    let prefix = teamSessions.get(teamKey);
+  async getTeamSessionKey(ownerId: string, teamId: string, instanceId: string): Promise<string> {
+    const redisKey = `ocm:teamSession:${ownerId}:${teamId}`;
+    let prefix = await getRedis().get(redisKey);
     if (!prefix) {
       prefix = `team-${ownerId}-${teamId}`;
-      teamSessions.set(teamKey, prefix);
+      await getRedis().set(redisKey, prefix);
     }
     return `${prefix}-${instanceId}`;
   },
 
-  resetTeamSession(ownerId: string, teamId: string): void {
-    const teamKey = `${ownerId}:${teamId}`;
-    teamSessions.set(teamKey, `team-${ownerId}-${teamId}-${Date.now()}`);
+  async resetTeamSession(ownerId: string, teamId: string): Promise<void> {
+    const redisKey = `ocm:teamSession:${ownerId}:${teamId}`;
+    await getRedis().set(redisKey, `team-${ownerId}-${teamId}-${Date.now()}`);
   },
 
-  addTeamExecutionSummary(ownerId: string, teamId: string, goal: string, summary: string): void {
-    const key = `${ownerId}:${teamId}`;
-    const history = teamExecutionHistory.get(key) || [];
-    history.push({ goal, summary, completedAt: new Date().toISOString() });
-    if (history.length > MAX_TEAM_HISTORY) {
-      history.splice(0, history.length - MAX_TEAM_HISTORY);
-    }
-    teamExecutionHistory.set(key, history);
+  async addTeamExecutionSummary(ownerId: string, teamId: string, goal: string, summary: string): Promise<void> {
+    const redisKey = `ocm:teamExecHistory:${ownerId}:${teamId}`;
+    const entry = JSON.stringify({ goal, summary, completedAt: new Date().toISOString() });
+    const redis = getRedis();
+    await redis.rpush(redisKey, entry);
+    await redis.ltrim(redisKey, -MAX_TEAM_HISTORY, -1);
   },
 
-  getTeamExecutionSummaries(ownerId: string, teamId: string): Array<{ goal: string; summary: string; completedAt: string }> {
-    return teamExecutionHistory.get(`${ownerId}:${teamId}`) || [];
+  async getTeamExecutionSummaries(ownerId: string, teamId: string): Promise<Array<{ goal: string; summary: string; completedAt: string }>> {
+    const redisKey = `ocm:teamExecHistory:${ownerId}:${teamId}`;
+    const entries = await getRedis().lrange(redisKey, 0, -1);
+    return entries.map(e => JSON.parse(e));
   },
 
   // ── Share token operations ─────────
 
-  createShareToken(ownerId: string, shareType: 'team' | 'instance', targetId: string, duration: ShareDuration): ShareToken {
+  async createShareToken(ownerId: string, shareType: 'team' | 'instance', targetId: string, duration: ShareDuration): Promise<ShareToken> {
     const id = uuid();
     const token = crypto.randomBytes(32).toString('hex');
     const now = new Date();
@@ -572,47 +720,63 @@ export const store = {
       createdAt: now.toISOString(),
     };
 
-    shareTokens.set(id, st);
-    shareTokenByToken.set(token, id);
-    saveShareToken(st).catch(err => console.error('[store] Failed to persist share token:', err));
+    await saveShareToken(st);
+
+    // Cache token->id mapping with TTL matching expiration
+    const ttlSec = Math.ceil(SHARE_DURATION_MS[duration] / 1000);
+    await cacheSet(`ocm:shareToken:${token}`, st, ttlSec);
+
     return st;
   },
 
-  getShareTokenByToken(token: string): ShareToken | undefined {
-    const id = shareTokenByToken.get(token);
-    if (!id) return undefined;
-    const st = shareTokens.get(id);
-    if (!st) return undefined;
-    if (new Date(st.expiresAt) < new Date()) {
-      shareTokens.delete(id);
-      shareTokenByToken.delete(token);
-      deleteShareTokenFromDB(id).catch(() => {});
-      return undefined;
+  async getShareTokenByToken(token: string): Promise<ShareToken | undefined> {
+    // Try Redis cache first
+    const cached = await cacheGet<ShareToken>(`ocm:shareToken:${token}`);
+    if (cached) {
+      if (new Date(cached.expiresAt) < new Date()) {
+        await cacheDel(`ocm:shareToken:${token}`);
+        await deleteShareTokenFromDB(cached.id);
+        return undefined;
+      }
+      return cached;
     }
+
+    // Fall back to DB
+    const pool = getPool();
+    const { rows } = await pool.query(
+      'SELECT * FROM share_tokens WHERE token = $1 AND expires_at > NOW()',
+      [token]
+    );
+    if (rows.length === 0) return undefined;
+
+    const st = rowToShareToken(rows[0]);
+    const ttl = Math.ceil((new Date(st.expiresAt).getTime() - Date.now()) / 1000);
+    if (ttl > 0) await cacheSet(`ocm:shareToken:${token}`, st, ttl);
     return st;
   },
 
-  getShareTokensByOwner(ownerId: string): ShareToken[] {
-    const now = new Date();
-    return Array.from(shareTokens.values()).filter(st => {
-      if (st.ownerId !== ownerId) return false;
-      if (new Date(st.expiresAt) < now) return false;
-      return true;
-    });
+  async getShareTokensByOwner(ownerId: string): Promise<ShareToken[]> {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      'SELECT * FROM share_tokens WHERE owner_id = $1 AND expires_at > NOW() ORDER BY created_at ASC',
+      [ownerId]
+    );
+    return rows.map(rowToShareToken);
   },
 
-  deleteShareToken(ownerId: string, id: string): boolean {
-    const st = shareTokens.get(id);
-    if (!st || st.ownerId !== ownerId) return false;
-    shareTokenByToken.delete(st.token);
-    shareTokens.delete(id);
-    deleteShareTokenFromDB(id).catch(err => console.error('[store] Failed to delete share token:', err));
+  async deleteShareToken(ownerId: string, id: string): Promise<boolean> {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM share_tokens WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (rows.length === 0) return false;
+
+    await cacheDel(`ocm:shareToken:${rows[0].token}`);
+    await deleteShareTokenFromDB(id);
     return true;
   },
 
   // ── Session persistence ─────────
 
-  ensureSession(ownerId: string, instanceId: string, instanceName: string, sessionKey: string): void {
+  async ensureSession(ownerId: string, instanceId: string, instanceName: string, sessionKey: string): Promise<void> {
     const session: SessionRecord = {
       sessionKey,
       ownerId,
@@ -621,25 +785,14 @@ export const store = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    saveSession(session).catch(err =>
-      console.error('[store] Failed to persist session:', err)
-    );
+    await saveSession(session);
   },
 
-  updateTaskOutput(taskId: string, output: string): void {
-    updateTaskOutput(taskId, output).catch(err =>
-      console.error('[store] Failed to update task output:', err)
-    );
+  async updateTaskOutput(taskId: string, output: string): Promise<void> {
+    await updateTaskOutputDB(taskId, output);
   },
 
-  cleanExpiredShareTokens(): void {
-    const now = new Date();
-    for (const [id, st] of shareTokens) {
-      if (new Date(st.expiresAt) < now) {
-        shareTokenByToken.delete(st.token);
-        shareTokens.delete(id);
-      }
-    }
-    cleanExpiredShareTokens().catch(err => console.error('[store] Failed to clean expired tokens:', err));
+  async cleanExpiredShareTokens(): Promise<void> {
+    await cleanExpiredShareTokensDB();
   },
 };

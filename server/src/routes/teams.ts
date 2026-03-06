@@ -5,35 +5,31 @@ import type { ClawRole } from '../../../shared/types';
 
 export const teamRouter = Router();
 
-// List all teams for the current user
-teamRouter.get('/', (req, res) => {
+teamRouter.get('/', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const teams = store.getTeams(ownerId);
+  const teams = await store.getTeams(ownerId);
   res.json({ teams });
 });
 
-// Get team templates
 teamRouter.get('/templates', (_req, res) => {
   res.json({ templates: TEAM_TEMPLATES });
 });
 
-// Get a single team
-teamRouter.get('/:id', (req, res) => {
+teamRouter.get('/:id', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) return res.status(404).json({ error: 'Team not found' });
   res.json(team);
 });
 
-// Create a team (from scratch or from template)
-teamRouter.post('/', (req, res) => {
+teamRouter.post('/', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { name, description, templateId, roles } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
   }
-  if (store.isTeamNameTaken(ownerId, name)) {
+  if (await store.isTeamNameTaken(ownerId, name)) {
     return res.status(400).json({ error: 'Team name must be unique' });
   }
 
@@ -56,20 +52,19 @@ teamRouter.post('/', (req, res) => {
     return res.status(400).json({ error: 'At least one role must be designated as Lead' });
   }
 
-  const team = store.createTeam(ownerId, { name, description: description || '' }, roleDefs);
+  const team = await store.createTeam(ownerId, { name, description: description || '' }, roleDefs);
   res.status(201).json(team);
 });
 
-// Update team info
-teamRouter.put('/:id', (req, res) => {
+teamRouter.put('/:id', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { name, description } = req.body;
 
-  const existing = store.getTeam(ownerId, req.params.id);
+  const existing = await store.getTeam(ownerId, req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Team not found' });
   }
-  if (name && store.isTeamNameTaken(ownerId, name, req.params.id)) {
+  if (name && await store.isTeamNameTaken(ownerId, name, req.params.id)) {
     return res.status(400).json({ error: 'Team name must be unique' });
   }
 
@@ -77,35 +72,32 @@ teamRouter.put('/:id', (req, res) => {
   if (name !== undefined) updateData.name = name;
   if (description !== undefined) updateData.description = description;
 
-  const team = store.updateTeam(req.params.id, updateData);
+  const team = await store.updateTeam(req.params.id, updateData);
   if (!team) return res.status(404).json({ error: 'Team not found' });
   res.json(team);
 });
 
-// Delete a team
-teamRouter.delete('/:id', (req, res) => {
+teamRouter.delete('/:id', async (req, res) => {
   const ownerId = req.userContext!.userId;
-  const existing = store.getTeam(ownerId, req.params.id);
+  const existing = await store.getTeam(ownerId, req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Team not found' });
   }
-  store.deleteTeam(req.params.id);
+  await store.deleteTeam(req.params.id);
   res.status(204).send();
 });
 
-// Add a role to a team
-teamRouter.post('/:id/roles', (req, res) => {
+teamRouter.post('/:id/roles', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { name, description, capabilities, isLead } = req.body;
 
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) return res.status(404).json({ error: 'Team not found' });
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Role name is required' });
   }
 
-  // If new role is Lead, ensure no duplicate leads
   if (isLead) {
     const existingLead = team.roles.find(r => r.isLead);
     if (existingLead) {
@@ -113,7 +105,7 @@ teamRouter.post('/:id/roles', (req, res) => {
     }
   }
 
-  const role = store.addRoleToTeam(req.params.id, {
+  const role = await store.addRoleToTeam(req.params.id, {
     name: name.trim(),
     description: (description || '').trim(),
     capabilities: Array.isArray(capabilities) ? capabilities : [],
@@ -122,22 +114,20 @@ teamRouter.post('/:id/roles', (req, res) => {
 
   if (!role) return res.status(500).json({ error: 'Failed to add role' });
 
-  const refreshedTeam = store.getTeam(ownerId, req.params.id);
+  const refreshedTeam = await store.getTeam(ownerId, req.params.id);
   res.status(201).json(refreshedTeam);
 });
 
-// Update a role in a team
-teamRouter.put('/:id/roles/:roleId', (req, res) => {
+teamRouter.put('/:id/roles/:roleId', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { name, description, capabilities, isLead } = req.body;
 
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) return res.status(404).json({ error: 'Team not found' });
 
   const existingRole = team.roles.find(r => r.id === req.params.roleId);
   if (!existingRole) return res.status(404).json({ error: 'Role not found in this team' });
 
-  // If setting isLead to true, check for existing lead (excluding this role)
   if (isLead && !existingRole.isLead) {
     const existingLead = team.roles.find(r => r.isLead && r.id !== req.params.roleId);
     if (existingLead) {
@@ -151,18 +141,17 @@ teamRouter.put('/:id/roles/:roleId', (req, res) => {
   if (capabilities !== undefined) updateData.capabilities = capabilities;
   if (isLead !== undefined) updateData.isLead = isLead;
 
-  const updated = store.updateRole(req.params.id, req.params.roleId, updateData);
+  const updated = await store.updateRole(req.params.id, req.params.roleId, updateData);
   if (!updated) return res.status(500).json({ error: 'Failed to update role' });
 
-  const refreshedTeam = store.getTeam(ownerId, req.params.id);
+  const refreshedTeam = await store.getTeam(ownerId, req.params.id);
   res.json(refreshedTeam);
 });
 
-// Delete a role from a team
-teamRouter.delete('/:id/roles/:roleId', (req, res) => {
+teamRouter.delete('/:id/roles/:roleId', async (req, res) => {
   const ownerId = req.userContext!.userId;
 
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) return res.status(404).json({ error: 'Team not found' });
 
   const role = team.roles.find(r => r.id === req.params.roleId);
@@ -172,7 +161,6 @@ teamRouter.delete('/:id/roles/:roleId', (req, res) => {
     return res.status(400).json({ error: 'Team must have at least 2 roles' });
   }
 
-  // Don't allow deleting the only Lead
   if (role.isLead) {
     const otherLeads = team.roles.filter(r => r.isLead && r.id !== req.params.roleId);
     if (otherLeads.length === 0) {
@@ -180,15 +168,14 @@ teamRouter.delete('/:id/roles/:roleId', (req, res) => {
     }
   }
 
-  const deleted = store.deleteRole(req.params.id, req.params.roleId);
+  const deleted = await store.deleteRole(req.params.id, req.params.roleId);
   if (!deleted) return res.status(500).json({ error: 'Failed to delete role' });
 
-  const refreshedTeam = store.getTeam(ownerId, req.params.id);
+  const refreshedTeam = await store.getTeam(ownerId, req.params.id);
   res.json(refreshedTeam);
 });
 
-// Bind an instance to a role in a team
-teamRouter.post('/:id/bind', (req, res) => {
+teamRouter.post('/:id/bind', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { instanceId, roleId } = req.body;
 
@@ -196,12 +183,12 @@ teamRouter.post('/:id/bind', (req, res) => {
     return res.status(400).json({ error: 'instanceId and roleId are required' });
   }
 
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) {
     return res.status(404).json({ error: 'Team not found' });
   }
 
-  const instance = store.getInstance(ownerId, instanceId);
+  const instance = await store.getInstance(ownerId, instanceId);
   if (!instance) {
     return res.status(404).json({ error: 'Instance not found' });
   }
@@ -211,17 +198,16 @@ teamRouter.post('/:id/bind', (req, res) => {
     return res.status(400).json({ error: 'Role does not belong to this team' });
   }
 
-  const updated = store.bindInstanceToRole(instanceId, req.params.id, roleId);
+  const updated = await store.bindInstanceToRole(instanceId, req.params.id, roleId);
   if (!updated) {
     return res.status(500).json({ error: 'Failed to bind instance' });
   }
 
-  const refreshedTeam = store.getTeam(ownerId, req.params.id);
+  const refreshedTeam = await store.getTeam(ownerId, req.params.id);
   res.json(refreshedTeam);
 });
 
-// Unbind an instance from its team
-teamRouter.post('/:id/unbind', (req, res) => {
+teamRouter.post('/:id/unbind', async (req, res) => {
   const ownerId = req.userContext!.userId;
   const { instanceId } = req.body;
 
@@ -229,13 +215,13 @@ teamRouter.post('/:id/unbind', (req, res) => {
     return res.status(400).json({ error: 'instanceId is required' });
   }
 
-  const team = store.getTeam(ownerId, req.params.id);
+  const team = await store.getTeam(ownerId, req.params.id);
   if (!team) {
     return res.status(404).json({ error: 'Team not found' });
   }
 
-  store.unbindInstanceFromTeam(instanceId);
+  await store.unbindInstanceFromTeam(instanceId);
 
-  const refreshedTeam = store.getTeam(ownerId, req.params.id);
+  const refreshedTeam = await store.getTeam(ownerId, req.params.id);
   res.json(refreshedTeam);
 });

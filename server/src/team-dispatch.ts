@@ -15,10 +15,6 @@ export function cancelExecution(executionId: string) {
   cancelledExecutions.set(executionId, true);
 }
 
-// ──────────────────────────────────────
-// Types
-// ──────────────────────────────────────
-
 interface BroadcastFn {
   (ownerId: string, message: WSMessage): void;
 }
@@ -35,10 +31,6 @@ const DEFAULT_CONFIG: ExecutionConfig = {
   maxRetriesPerRole: 2,
 };
 
-// ──────────────────────────────────────
-// HTTP helpers
-// ──────────────────────────────────────
-
 function toHttpBase(endpoint: string | undefined): string {
   if (!endpoint) return '';
   return endpoint
@@ -46,10 +38,6 @@ function toHttpBase(endpoint: string | undefined): string {
     .replace(/^wss:\/\//, 'https://')
     .replace(/\/+$/, '');
 }
-
-// ──────────────────────────────────────
-// Prompt building
-// ──────────────────────────────────────
 
 function buildTurnPrompt(
   turn: Turn,
@@ -241,29 +229,75 @@ function buildActionInstructions(isLead: boolean, team: TeamPublic): string {
   return instructions;
 }
 
-// ──────────────────────────────────────
-// Action parsing
-// ──────────────────────────────────────
-
 function parseActionFromOutput(output: string): TurnAction | null {
-  const jsonMatch = output.match(/```json\s*([\s\S]*?)```/);
-  const raw = jsonMatch ? jsonMatch[1].trim() : null;
-
-  if (!raw) {
-    const braceMatch = output.match(/\{\s*"action"\s*:\s*"(?:delegate|report|feedback|done)"[\s\S]*?\}/);
-    if (braceMatch) {
+  // Strategy 1: Find the LAST ```json...``` block (the action block is always at the end).
+  // Use greedy match to skip past nested code blocks inside the task content.
+  const allJsonBlocks = [...output.matchAll(/```json\s*([\s\S]*?)```/g)];
+  if (allJsonBlocks.length > 0) {
+    // Try from last to first — the action block is instructed to be at the end
+    for (let i = allJsonBlocks.length - 1; i >= 0; i--) {
+      const raw = allJsonBlocks[i][1].trim();
       try {
-        return validateAction(JSON.parse(braceMatch[0]));
-      } catch { /* fall through */ }
+        const result = validateAction(JSON.parse(raw));
+        if (result) return result;
+      } catch { /* try next */ }
     }
-    return null;
   }
 
-  try {
-    return validateAction(JSON.parse(raw));
-  } catch {
-    return null;
+  // Strategy 2: Extract JSON by finding balanced braces starting from an "action" key.
+  // This handles cases where the JSON is not in a code block, or nested ``` broke extraction.
+  const actionStart = output.lastIndexOf('"action"');
+  if (actionStart !== -1) {
+    // Walk backwards to find the opening brace
+    let braceStart = output.lastIndexOf('{', actionStart);
+    if (braceStart !== -1) {
+      const extracted = extractBalancedJson(output, braceStart);
+      if (extracted) {
+        try {
+          return validateAction(JSON.parse(extracted));
+        } catch { /* fall through */ }
+      }
+    }
   }
+
+  return null;
+}
+
+function extractBalancedJson(str: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < str.length; i++) {
+    const ch = str[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        return str.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
 }
 
 function validateAction(obj: Record<string, unknown>): TurnAction | null {
@@ -324,11 +358,7 @@ function validateAction(obj: Record<string, unknown>): TurnAction | null {
   }
 }
 
-// ──────────────────────────────────────
-// Instance calling (SSE stream)
-// ──────────────────────────────────────
-
-async function callInstance(
+async function callInstanceRaw(
   instance: Instance,
   content: string,
   ownerId: string,
@@ -355,10 +385,10 @@ async function callInstance(
     user: sessionKey,
   });
 
-  console.log(`[execution] >>> Turn ${turn.seq} [${instance.name}] role=${turn.role}`);
+  console.log(`[execution] >>> Turn ${turn.seq} [${instance.name}] role=${turn.role} session=${sessionKey}`);
   logWS(createLogEntry('outbound', instance.id, instance.name, `[exec:turn-${turn.seq}] ${body.slice(0, 200)}`));
 
-  store.updateInstance(instance.id, { status: 'busy' });
+  await store.updateInstance(instance.id, { status: 'busy' });
   broadcastToOwner(ownerId, {
     type: 'instance:status',
     payload: { instanceId: instance.id, status: 'busy' },
@@ -448,7 +478,7 @@ async function callInstance(
     console.error(`[execution] Turn ${turn.seq} [${instance.name}] ERROR:`, err instanceof Error ? err.message : err);
     throw err;
   } finally {
-    store.updateInstance(instance.id, { status: 'online' });
+    await store.updateInstance(instance.id, { status: 'online' });
     broadcastToOwner(ownerId, {
       type: 'instance:status',
       payload: { instanceId: instance.id, status: 'online' },
@@ -460,9 +490,60 @@ async function callInstance(
   return fullText;
 }
 
-// ──────────────────────────────────────
-// Graph building
-// ──────────────────────────────────────
+/**
+ * Wraps callInstanceRaw with a fallback: if the first call returns empty (no response),
+ * resets the team session to start a new chat and retries once. Only returns empty or
+ * throws after both attempts fail.
+ */
+async function callInstance(
+  instance: Instance,
+  content: string,
+  ownerId: string,
+  broadcastToOwner: BroadcastFn,
+  executionId: string,
+  turn: Turn,
+  sessionKey: string,
+  teamId?: string,
+): Promise<string> {
+  const result = await callInstanceRaw(instance, content, ownerId, broadcastToOwner, executionId, turn, sessionKey);
+
+  if (result.trim().length > 0) {
+    return result;
+  }
+
+  // Empty response — likely a stale/corrupted session. Retry with a fresh session.
+  console.warn(`[execution] Turn ${turn.seq} [${instance.name}] got empty response with session=${sessionKey}, retrying with new session…`);
+
+  broadcastToOwner(ownerId, {
+    type: 'execution:warning',
+    payload: {
+      message: `「${turn.role}」(${instance.name}) 返回空响应，正在重置会话并重试…`,
+      turnId: turn.id,
+    },
+    teamId: teamId || turn.executionId,
+    timestamp: new Date().toISOString(),
+  });
+
+  let newSessionKey: string;
+  if (teamId) {
+    await store.resetTeamSession(ownerId, teamId);
+    newSessionKey = await store.getTeamSessionKey(ownerId, teamId, instance.id);
+  } else {
+    newSessionKey = await store.resetSessionKey(ownerId, instance.id);
+  }
+
+  console.log(`[execution] Turn ${turn.seq} [${instance.name}] retrying with new session=${newSessionKey}`);
+
+  const retryResult = await callInstanceRaw(instance, content, ownerId, broadcastToOwner, executionId, turn, newSessionKey);
+
+  if (retryResult.trim().length > 0) {
+    return retryResult;
+  }
+
+  // Both attempts returned empty
+  console.error(`[execution] Turn ${turn.seq} [${instance.name}] still empty after session reset`);
+  throw new Error(`No response from ${instance.name} (empty reply after session reset retry)`);
+}
 
 function buildExecutionGraph(execution: Execution): ExecutionGraph {
   const nodes: GraphNode[] = execution.turns
@@ -543,26 +624,18 @@ function toTurnSummary(turn: Turn): TurnSummary {
   };
 }
 
-// ──────────────────────────────────────
-// Role resolution
-// ──────────────────────────────────────
-
-function resolveRoleInstance(team: TeamPublic, roleName: string): RoleInstance | null {
+async function resolveRoleInstance(team: TeamPublic, roleName: string): Promise<RoleInstance | null> {
   const role = team.roles.find(r => r.name === roleName);
   if (!role) return null;
 
   const member = team.members.find(m => m.roleId === role.id);
   if (!member?.instanceId) return null;
 
-  const instance = store.getInstanceRaw(member.instanceId);
+  const instance = await store.getInstanceRaw(member.instanceId);
   if (!instance) return null;
 
   return { role, instance };
 }
-
-// ──────────────────────────────────────
-// Main execution engine
-// ──────────────────────────────────────
 
 export async function dispatchToTeam(
   ownerId: string,
@@ -572,7 +645,7 @@ export async function dispatchToTeam(
   newSession?: boolean,
   userConfig?: Partial<ExecutionConfig>,
 ) {
-  const team = store.getTeam(ownerId, teamId);
+  const team = await store.getTeam(ownerId, teamId);
   if (!team) {
     broadcastToOwner(ownerId, {
       type: 'team:error',
@@ -594,7 +667,7 @@ export async function dispatchToTeam(
     return;
   }
 
-  const leadRI = resolveRoleInstance(team, leadRole.name);
+  const leadRI = await resolveRoleInstance(team, leadRole.name);
   if (!leadRI) {
     broadcastToOwner(ownerId, {
       type: 'team:error',
@@ -606,10 +679,10 @@ export async function dispatchToTeam(
   }
 
   if (newSession) {
-    store.resetTeamSession(ownerId, teamId);
+    await store.resetTeamSession(ownerId, teamId);
   }
 
-  const previousExecutions = store.getTeamExecutionSummaries(ownerId, teamId);
+  const previousExecutions = await store.getTeamExecutionSummaries(ownerId, teamId);
 
   const execution: Execution = {
     id: uuid(),
@@ -678,7 +751,6 @@ export async function dispatchToTeam(
     };
   }
 
-  // Bootstrap: Lead receives the goal
   pendingTurns.push(createTurn(
     leadRole.name,
     leadRI.instance.id,
@@ -715,9 +787,7 @@ export async function dispatchToTeam(
     );
   }
 
-  // ── Main loop ──
   while (pendingTurns.length > 0) {
-    // Check for cancellation
     if (cancelledExecutions.get(execution.id)) {
       cancelledExecutions.delete(execution.id);
       execution.status = 'failed';
@@ -742,7 +812,6 @@ export async function dispatchToTeam(
       return;
     }
 
-    // Safety: max turns
     if (execution.turns.filter(t => t.status === 'completed').length >= execution.config.maxTurns) {
       broadcastToOwner(ownerId, {
         type: 'execution:warning',
@@ -762,12 +831,10 @@ export async function dispatchToTeam(
       ));
     }
 
-    // Collect independent turns that can run in parallel
     const parallelBatch: Turn[] = [];
     const firstTurn = pendingTurns[0];
     if (firstTurn) {
       parallelBatch.push(pendingTurns.shift()!);
-      // Collect more turns with the same parentTurnId (siblings from multi_delegate)
       while (pendingTurns.length > 0 && pendingTurns[0].parentTurnId === firstTurn.parentTurnId && pendingTurns[0].depth === firstTurn.depth) {
         parallelBatch.push(pendingTurns.shift()!);
       }
@@ -775,7 +842,6 @@ export async function dispatchToTeam(
 
     if (parallelBatch.length === 0) break;
 
-    // Execute turns (parallel if multiple)
     const turnResults = await Promise.all(parallelBatch.map(turn => executeSingleTurn(turn)));
 
     for (const result of turnResults) {
@@ -786,7 +852,6 @@ export async function dispatchToTeam(
     }
   }
 
-  // Timeout
   execution.status = 'timeout';
   execution.completedAt = new Date().toISOString();
   execution.metrics = computeMetrics(execution);
@@ -811,12 +876,10 @@ export async function dispatchToTeam(
     const leadRole_ = leadRole!;
     const leadRI_ = leadRI!;
 
-    // Check cancel at turn start
     if (cancelledExecutions.get(execution.id)) {
       return { finished: false };
     }
 
-    // Depth check
     if (turn.depth >= execution.config.maxDepth) {
       turn.task += `\n\n[系统提示: 已达最大委派深度 (${execution.config.maxDepth})，请直接汇报结果给上级，不要继续委派]`;
     }
@@ -838,13 +901,13 @@ export async function dispatchToTeam(
 
     let output: string;
     try {
-      const ri = resolveRoleInstance(team_, turn.role);
-      const inst = ri?.instance || store.getInstanceRaw(turn.instanceId);
+      const ri = await resolveRoleInstance(team_, turn.role);
+      const inst = ri?.instance || await store.getInstanceRaw(turn.instanceId);
       if (!inst) throw new Error(`Instance not found for role "${turn.role}"`);
 
-      store.markUsedByTeam(ownerId, inst.id);
-      const sessionKey = store.getTeamSessionKey(ownerId, teamId, inst.id);
-      output = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn, sessionKey);
+      await store.markUsedByTeam(ownerId, inst.id);
+      const sessionKey = await store.getTeamSessionKey(ownerId, teamId, inst.id);
+      output = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn, sessionKey, teamId);
     } catch (err) {
       turn.status = 'failed';
       turn.completedAt = new Date().toISOString();
@@ -875,7 +938,7 @@ export async function dispatchToTeam(
           teamId, timestamp: new Date().toISOString(),
         });
 
-        const ri = resolveRoleInstance(team_, turn.role);
+        const ri = await resolveRoleInstance(team_, turn.role);
         if (ri) {
           const retryTurn = createTurn(turn.role, ri.instance.id,
             `[系统提示: 上一次执行失败，错误信息: ${turn.output.slice(0, 200)}。请重试以下任务]\n\n${turn.task}`,
@@ -904,7 +967,7 @@ export async function dispatchToTeam(
         });
 
         const parentTurn = turn.parentTurnId ? execution.turns.find(t => t.id === turn.parentTurnId) : null;
-        const escalateRI = parentTurn ? resolveRoleInstance(team_, parentTurn.role) : leadRI_;
+        const escalateRI = parentTurn ? await resolveRoleInstance(team_, parentTurn.role) : leadRI_;
         if (escalateRI) {
           const escalateTask = `「${turn.role}」在执行任务时连续失败 ${failures} 次，已无法完成。\n\n**原始任务**：${turn.task.slice(0, 500)}\n**最后错误**：${turn.output.slice(0, 300)}\n\n请决定如何处理。`;
           const escalateTurn = createTurn(escalateRI.role.name, escalateRI.instance.id, escalateTask, turn.id,
@@ -944,7 +1007,7 @@ export async function dispatchToTeam(
         execution.summary = output.slice(0, 2000);
         execution.completedAt = new Date().toISOString();
         execution.metrics = computeMetrics(execution);
-        store.addTeamExecutionSummary(ownerId, teamId, goal, execution.summary);
+        await store.addTeamExecutionSummary(ownerId, teamId, goal, execution.summary);
         persistCurrentExecution();
         broadcastToOwner(ownerId, {
           type: 'execution:completed',
@@ -963,7 +1026,7 @@ export async function dispatchToTeam(
 
     switch (action.type) {
       case 'delegate': {
-        const targetRI = resolveRoleInstance(team_, action.to);
+        const targetRI = await resolveRoleInstance(team_, action.to);
         if (!targetRI) {
           broadcastToOwner(ownerId, { type: 'execution:warning', payload: { message: `角色「${action.to}」不存在或未绑定实例`, turnId: turn.id }, teamId, timestamp: new Date().toISOString() });
           break;
@@ -977,7 +1040,7 @@ export async function dispatchToTeam(
 
       case 'multi_delegate': {
         for (const sub of action.tasks) {
-          const targetRI = resolveRoleInstance(team_, sub.to);
+          const targetRI = await resolveRoleInstance(team_, sub.to);
           if (!targetRI) {
             broadcastToOwner(ownerId, { type: 'execution:warning', payload: { message: `角色「${sub.to}」不存在或未绑定实例`, turnId: turn.id }, teamId, timestamp: new Date().toISOString() });
             continue;
@@ -993,7 +1056,7 @@ export async function dispatchToTeam(
 
       case 'report': {
         const parentTurn = turn.parentTurnId ? execution.turns.find(t => t.id === turn.parentTurnId) : null;
-        const targetRI = parentTurn ? resolveRoleInstance(team_, parentTurn.role) : leadRI_;
+        const targetRI = parentTurn ? await resolveRoleInstance(team_, parentTurn.role) : leadRI_;
         if (!targetRI) break;
 
         if (targetRI.role.name === turn.role && turn.role === leadRole_.name) {
@@ -1001,7 +1064,7 @@ export async function dispatchToTeam(
           execution.summary = action.summary;
           execution.completedAt = new Date().toISOString();
           execution.metrics = computeMetrics(execution);
-          store.addTeamExecutionSummary(ownerId, teamId, goal, action.summary);
+          await store.addTeamExecutionSummary(ownerId, teamId, goal, action.summary);
           persistCurrentExecution();
           broadcastToOwner(ownerId, {
             type: 'execution:completed',
@@ -1019,7 +1082,7 @@ export async function dispatchToTeam(
       }
 
       case 'feedback': {
-        const targetRI = resolveRoleInstance(team_, action.to);
+        const targetRI = await resolveRoleInstance(team_, action.to);
         if (!targetRI) {
           broadcastToOwner(ownerId, { type: 'execution:warning', payload: { message: `反馈目标角色「${action.to}」不存在或未绑定实例`, turnId: turn.id }, teamId, timestamp: new Date().toISOString() });
           break;
@@ -1038,7 +1101,7 @@ export async function dispatchToTeam(
           execution.summary = action.summary;
           execution.completedAt = new Date().toISOString();
           execution.metrics = computeMetrics(execution);
-          store.addTeamExecutionSummary(ownerId, teamId, goal, action.summary);
+          await store.addTeamExecutionSummary(ownerId, teamId, goal, action.summary);
           persistCurrentExecution();
           broadcastToOwner(ownerId, {
             type: 'execution:completed',
