@@ -1,9 +1,0 @@
-{
-  "id": "gemini",
-  "author": "steipete",
-  "category": "coding",
-  "tags": ["gemini", "google", "ai", "llm", "generation"],
-  "homepage": "https://ai.google.dev/",
-  "emoji": "♊️",
-  "requires": { "bins": ["gemini"] }
-}

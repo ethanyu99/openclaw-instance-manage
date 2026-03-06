@@ -1,8 +1,0 @@
-{
-  "id": "github",
-  "author": "steipete",
-  "category": "coding",
-  "tags": ["github", "gh", "pr", "issues", "ci"],
-  "homepage": "https://cli.github.com",
-  "emoji": "🐙"
-}

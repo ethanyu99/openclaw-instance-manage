@@ -1,9 +1,0 @@
-{
-  "id": "github-pr",
-  "author": "dbhurley",
-  "category": "coding",
-  "tags": ["github", "pr", "merge", "test", "review"],
-  "homepage": "https://cli.github.com",
-  "emoji": "🔀",
-  "requires": { "bins": ["gh", "git"] }
-}

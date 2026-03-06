@@ -1,8 +1,0 @@
-{
-  "id": "skill-writer",
-  "author": "gitgoodordietrying",
-  "category": "productivity",
-  "tags": ["skill", "writing", "clawhub", "documentation", "publishing"],
-  "emoji": "✍️",
-  "requires": { "bins": ["npx"] }
-}

@@ -1,8 +1,0 @@
-{
-  "id": "pr-reviewer",
-  "author": "briancolinger",
-  "category": "coding",
-  "tags": ["code-review", "pr", "security", "lint", "quality"],
-  "emoji": "🔍",
-  "requires": { "bins": ["gh", "git"] }
-}
