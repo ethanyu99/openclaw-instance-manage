@@ -14,6 +14,7 @@ import { teamRouter } from './routes/teams';
 import { uploadRouter } from './routes/upload';
 import { instanceConfigRouter, teamConfigRouter } from './routes/sandbox-config';
 import { shareRouter, shareViewRouter } from './routes/share';
+import { googleAuthRouter } from './routes/google-auth';
 import { setupWebSocket } from './ws';
 import { authMiddleware } from './auth';
 import { initDB } from './db';
@@ -33,6 +34,7 @@ app.use('/api/teams', authMiddleware, teamRouter);
 app.use('/api/teams', authMiddleware, teamConfigRouter);
 app.use('/api/instances', authMiddleware, instanceConfigRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/auth', googleAuthRouter);
 app.use('/api/share/view', shareViewRouter);
 app.use('/api/share', authMiddleware, shareRouter);
 

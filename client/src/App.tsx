@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { StatusBar } from '@/components/StatusBar';
 import { InstanceCard } from '@/components/InstanceCard';
 import { AddInstanceDialog } from '@/components/AddInstanceDialog';
@@ -11,6 +12,7 @@ import { ExecutionPanel } from '@/components/ExecutionPanel';
 import { ExecutionReportDialog } from '@/components/ExecutionReportDialog';
 import { ShareView } from '@/components/ShareView';
 import { useInstanceManager } from '@/hooks/useInstanceManager';
+import { useAuth } from '@/hooks/useAuth';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { fetchTeams } from '@/lib/api';
 import type { TeamPublic } from '@shared/types';
@@ -24,10 +26,99 @@ function getShareToken(): string | null {
   return match ? match[1] : null;
 }
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+function LoginPage() {
+  const { handleGoogleLogin, loading } = useAuth();
+  const [error, setError] = useState('');
+
+  return (
+    <div className="h-screen flex items-center justify-center bg-[#f8f9fa]">
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
+      <div className="relative z-10 w-full max-w-sm mx-auto px-6">
+        <div className="bg-card rounded-2xl border border-border/80 shadow-lg p-8 text-center">
+          <div className="flex items-center justify-center gap-2.5 mb-2">
+            <img src="/favicon.svg" alt="Lobster Squad" className="w-8 h-8" />
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Lobster Squad</h1>
+          </div>
+          <p className="text-sm text-muted-foreground mb-8">Sign in to manage your instances</p>
+
+          {error && (
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-center">
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Signing in...
+              </div>
+            ) : (
+              <GoogleLogin
+                onSuccess={(res) => {
+                  if (res.credential) {
+                    handleGoogleLogin(res.credential).catch(() => setError('Login failed, please try again'));
+                  }
+                }}
+                onError={() => setError('Google login failed, please try again')}
+                size="large"
+                theme="outline"
+                shape="rectangular"
+                text="signin_with"
+                width="300"
+              />
+            )}
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/60 mt-6 leading-relaxed">
+            Your existing instances and data will be preserved after sign-in.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const shareToken = getShareToken();
   if (shareToken) {
     return <ShareView token={shareToken} />;
+  }
+
+  if (!GOOGLE_CLIENT_ID) {
+    return <MainApp />;
+  }
+
+  return (
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <AuthGate />
+    </GoogleOAuthProvider>
+  );
+}
+
+function AuthGate() {
+  const { isLoggedIn, validating } = useAuth();
+
+  if (validating) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#f8f9fa]">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return <LoginPage />;
   }
 
   return <MainApp />;

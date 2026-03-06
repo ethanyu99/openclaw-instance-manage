@@ -4,6 +4,7 @@ import type { WSMessage, TaskDispatchPayload, TeamDispatchPayload } from '../../
 import { store } from './store';
 import { logWS, createLogEntry } from './ws-logger';
 import { dispatchToTeam } from './team-dispatch';
+import { verifyToken } from './auth';
 
 interface WSClient {
   ws: WebSocket;
@@ -305,11 +306,20 @@ function extractShareToken(req: IncomingMessage): string | null {
 }
 
 function validateAccessToken(req: IncomingMessage): boolean {
-  const accessToken = process.env.ACCESS_TOKEN;
-  if (!accessToken) return true;
   try {
     const url = new URL(req.url || '', `http://${req.headers.host}`);
-    return url.searchParams.get('token') === accessToken;
+    const token = url.searchParams.get('token');
+
+    // JWT token takes priority
+    if (token) {
+      const jwtPayload = verifyToken(token);
+      if (jwtPayload) return true;
+    }
+
+    // Static ACCESS_TOKEN check
+    const accessToken = process.env.ACCESS_TOKEN;
+    if (!accessToken) return true;
+    return token === accessToken;
   } catch {
     return false;
   }

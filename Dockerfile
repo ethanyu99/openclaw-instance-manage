@@ -1,5 +1,8 @@
 FROM node:20-slim AS builder
 
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+
 WORKDIR /app
 
 # Install root deps
@@ -19,7 +22,7 @@ COPY shared/ ./shared/
 COPY server/ ./server/
 COPY client/ ./client/
 
-# Build client
+# Build client (picks up VITE_* env vars at build time)
 RUN cd client && npm run build
 
 # Build server

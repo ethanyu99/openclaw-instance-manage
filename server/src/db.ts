@@ -100,7 +100,20 @@ async function migrate() {
     );
   `);
 
-  // Step 5: Create indexes (after all columns exist)
+  // Step 5: Create users table for Google auth
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(255) PRIMARY KEY,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      name VARCHAR(255),
+      avatar_url TEXT,
+      google_id VARCHAR(255) UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Step 6: Create indexes (after all columns exist)
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_teams_owner_id ON teams(owner_id);
     CREATE INDEX IF NOT EXISTS idx_roles_team_id ON roles(team_id);
@@ -110,6 +123,8 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_tasks_owner_id ON tasks(owner_id);
     CREATE INDEX IF NOT EXISTS idx_share_tokens_token ON share_tokens(token);
     CREATE INDEX IF NOT EXISTS idx_share_tokens_owner ON share_tokens(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
   `);
 
   console.log('[db] Migration complete');

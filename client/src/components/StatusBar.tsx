@@ -1,9 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { History, ChevronDown, Loader2, User, Copy, Check } from 'lucide-react';
+import { History, ChevronDown, Loader2, User, Copy, Check, LogOut } from 'lucide-react';
 import type { InstancePublic, InstanceStats } from '@shared/types';
-import { getUserId, getShortUserId } from '@/lib/user';
+import { getUserId } from '@/lib/user';
+import { useAuth } from '@/hooks/useAuth';
 
 interface StatusBarProps {
   stats: InstanceStats;
@@ -15,7 +16,7 @@ interface StatusBarProps {
 function UserBadge() {
   const [copied, setCopied] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  const shortId = getShortUserId();
+  const { user, logout } = useAuth();
   const fullId = getUserId();
 
   const handleCopy = useCallback(() => {
@@ -31,41 +32,55 @@ function UserBadge() {
         type="button"
         onClick={() => setShowDetail(prev => !prev)}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 border border-border/50 text-xs text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors cursor-pointer"
-        title="Your user identity"
+        title={user?.email}
       >
-        <User className="h-3 w-3" />
-        <span className="font-mono font-medium">{shortId}</span>
+        {user?.avatarUrl ? (
+          <img src={user.avatarUrl} alt="" className="h-4 w-4 rounded-full" referrerPolicy="no-referrer" />
+        ) : (
+          <User className="h-3 w-3" />
+        )}
+        <span className="font-medium">
+          {user?.name || user?.email?.split('@')[0] || fullId.slice(0, 8)}
+        </span>
       </button>
       {showDetail && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowDetail(false)} />
-          <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-lg border border-border bg-card p-3 shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
+          <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-lg border border-border bg-card p-3 shadow-lg animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
+            <div className="flex items-center gap-3 mb-3">
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full ring-2 ring-border" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate">{user?.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              </div>
+            </div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-foreground">Your Identity</span>
+              <span className="text-[10px] text-muted-foreground">User ID</span>
               <button
                 type="button"
                 onClick={handleCopy}
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
               >
-                {copied ? (
-                  <>
-                    <Check className="h-3 w-3 text-emerald-500" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3 w-3" />
-                    Copy ID
-                  </>
-                )}
+                {copied ? <><Check className="h-3 w-3 text-emerald-500" />Copied</> : <><Copy className="h-3 w-3" />Copy</>}
               </button>
             </div>
-            <div className="font-mono text-[11px] text-muted-foreground bg-muted/40 px-2 py-1.5 rounded border border-border/50 break-all select-all">
+            <div className="font-mono text-[11px] text-muted-foreground bg-muted/40 px-2 py-1.5 rounded border border-border/50 break-all select-all mb-3">
               {fullId}
             </div>
-            <p className="text-[10px] text-muted-foreground/70 mt-2 leading-relaxed">
-              Instances and sessions are isolated by this ID. Different browsers generate different IDs.
-            </p>
+            <button
+              type="button"
+              onClick={() => { setShowDetail(false); logout(); }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 dark:text-red-400 transition-colors"
+            >
+              <LogOut className="h-3 w-3" />
+              Sign Out
+            </button>
           </div>
         </>
       )}

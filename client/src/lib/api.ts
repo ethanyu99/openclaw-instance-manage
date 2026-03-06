@@ -1,14 +1,21 @@
 import type { InstancePublic, TaskSummary, WSMessage, InstanceStats, SandboxProgress, SandboxSSEEvent, TeamPublic, TeamTemplate, ClawRole, ShareToken, ShareDuration, ShareViewData } from '@shared/types';
-import { getUserId } from './user';
+import { getUserId, getAuthToken, type AuthUser } from './user';
 
 const API_BASE = '/api';
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-User-Id': getUserId(),
     ...extra,
   };
+
+  const token = getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  return headers;
 }
 
 export async function fetchInstances(): Promise<{ instances: InstancePublic[]; stats: InstanceStats }> {
@@ -135,9 +142,12 @@ export async function uploadFiles(files: File[]): Promise<{ url: string; key: st
   for (const file of files) {
     formData.append('files', file);
   }
+  const headers: Record<string, string> = { 'X-User-Id': getUserId() };
+  const token = getAuthToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}/upload`, {
     method: 'POST',
-    headers: { 'X-User-Id': getUserId() },
+    headers,
     body: formData,
   });
   if (!res.ok) {
@@ -379,7 +389,12 @@ export async function getSandboxGitStatus(instanceId: string): Promise<GitStatus
 export function createWebSocket(onMessage: (msg: WSMessage) => void): WebSocket {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const userId = getUserId();
-  const ws = new WebSocket(`${protocol}//${window.location.host}/ws?userId=${encodeURIComponent(userId)}`);
+  const token = getAuthToken();
+  let wsUrl = `${protocol}//${window.location.host}/ws?userId=${encodeURIComponent(userId)}`;
+  if (token) {
+    wsUrl += `&token=${encodeURIComponent(token)}`;
+  }
+  const ws = new WebSocket(wsUrl);
 
   ws.onmessage = (event) => {
     try {
@@ -448,5 +463,30 @@ export async function fetchShareView(token: string): Promise<ShareViewData> {
     const body = await res.json().catch(() => ({ error: 'Share link is invalid or expired' }));
     throw new Error(body.error || 'Share link is invalid or expired');
   }
+  return res.json();
+}
+
+// ── Auth API ──────────────────────────
+
+export async function loginWithGoogle(credential: string, clientUserId: string): Promise<{ token: string; user: AuthUser }> {
+  const res = await fetch(`${API_BASE}/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential, clientUserId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Google login failed' }));
+    throw new Error(body.error || 'Google login failed');
+  }
+  return res.json();
+}
+
+export async function fetchCurrentUser(): Promise<{ user: AuthUser }> {
+  const token = getAuthToken();
+  if (!token) throw new Error('Not authenticated');
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Session expired');
   return res.json();
 }
