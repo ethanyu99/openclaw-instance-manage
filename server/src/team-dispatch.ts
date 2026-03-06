@@ -10,9 +10,33 @@ import { logWS, createLogEntry } from './ws-logger';
 import { saveExecution as persistExecution } from './persistence';
 
 const cancelledExecutions = new Map<string, boolean>();
+const executionAbortControllers = new Map<string, Set<AbortController>>();
 
 export function cancelExecution(executionId: string) {
   cancelledExecutions.set(executionId, true);
+  const controllers = executionAbortControllers.get(executionId);
+  if (controllers) {
+    for (const ctrl of controllers) {
+      ctrl.abort();
+    }
+  }
+}
+
+function registerAbortController(executionId: string, controller: AbortController): void {
+  let set = executionAbortControllers.get(executionId);
+  if (!set) {
+    set = new Set();
+    executionAbortControllers.set(executionId, set);
+  }
+  set.add(controller);
+}
+
+function unregisterAbortController(executionId: string, controller: AbortController): void {
+  const set = executionAbortControllers.get(executionId);
+  if (set) {
+    set.delete(controller);
+    if (set.size === 0) executionAbortControllers.delete(executionId);
+  }
 }
 
 interface BroadcastFn {
@@ -397,9 +421,10 @@ async function callInstanceRaw(
   });
 
   let fullText = '';
+  const controller = new AbortController();
+  registerAbortController(executionId, controller);
 
   try {
-    const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DEFAULT_CONFIG.turnTimeoutMs);
 
     const response = await fetch(url, {
@@ -475,9 +500,16 @@ async function callInstanceRaw(
       }
     }
   } catch (err) {
-    console.error(`[execution] Turn ${turn.seq} [${instance.name}] ERROR:`, err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    const isCancelled = cancelledExecutions.get(executionId) || msg === 'This operation was aborted';
+    if (isCancelled) {
+      console.log(`[execution] Turn ${turn.seq} [${instance.name}] aborted by cancel`);
+    } else {
+      console.error(`[execution] Turn ${turn.seq} [${instance.name}] ERROR:`, msg);
+    }
     throw err;
   } finally {
+    unregisterAbortController(executionId, controller);
     await store.updateInstance(instance.id, { status: 'online' });
     broadcastToOwner(ownerId, {
       type: 'instance:status',
@@ -790,6 +822,7 @@ export async function dispatchToTeam(
   while (pendingTurns.length > 0) {
     if (cancelledExecutions.get(execution.id)) {
       cancelledExecutions.delete(execution.id);
+      executionAbortControllers.delete(execution.id);
       execution.status = 'failed';
       execution.summary = '执行被用户取消';
       execution.completedAt = new Date().toISOString();
@@ -909,11 +942,18 @@ export async function dispatchToTeam(
       const sessionKey = await store.getTeamSessionKey(ownerId, teamId, inst.id);
       output = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn, sessionKey, teamId);
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      const isCancelAbort = cancelledExecutions.get(execution.id) || errMsg === 'This operation was aborted';
+
       turn.status = 'failed';
       turn.completedAt = new Date().toISOString();
       turn.durationMs = new Date(turn.completedAt).getTime() - new Date(turn.startedAt!).getTime();
-      turn.output = err instanceof Error ? err.message : 'Unknown error';
+      turn.output = isCancelAbort ? '执行被用户取消' : errMsg;
       execution.turns.push(turn);
+
+      if (isCancelAbort) {
+        return { finished: false };
+      }
 
       broadcastToOwner(ownerId, {
         type: 'execution:turn_failed',

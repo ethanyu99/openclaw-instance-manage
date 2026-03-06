@@ -503,6 +503,13 @@ export function useInstanceManager() {
 
   const dispatchTeamTask = useCallback((teamId: string, content: string, newSession?: boolean, config?: Partial<ExecutionConfig>) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    if (newSession) {
+      setExecutionLogs([]);
+      setExecutionStreams({});
+      activeExecutionRef.current = null;
+    }
+
     wsRef.current.send(JSON.stringify({
       type: 'team:dispatch',
       payload: { teamId, content, newSession: newSession || undefined, config: config || undefined },
@@ -526,6 +533,12 @@ export function useInstanceManager() {
       payload: { executionId },
       timestamp: new Date().toISOString(),
     }));
+    setExecutionLogs(prev => [...prev, {
+      executionId,
+      message: '正在停止执行…',
+      type: 'execution:stopping',
+      timestamp: new Date().toISOString(),
+    }]);
   }, []);
 
   const setNotifyCallback = useCallback((fn: (title: string, body: string) => void) => {

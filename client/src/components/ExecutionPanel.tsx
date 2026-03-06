@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { X, ChevronUp, ChevronDown, GitBranch, Clock, BarChart3, StopCircle } from 'lucide-react';
@@ -56,12 +56,17 @@ export function ExecutionPanel({
 }: ExecutionPanelProps) {
   const [expanded, setExpanded] = useState(true);
   const [view, setView] = useState<PanelView>('log');
+  const [stopping, setStopping] = useState(false);
 
   const lastLog = logs[logs.length - 1];
   const isDone = lastLog?.type === 'execution:completed' ||
     lastLog?.type === 'execution:timeout' ||
     lastLog?.type === 'execution:cancelled' ||
     lastLog?.type === 'team:error';
+
+  useEffect(() => {
+    if (isDone) setStopping(false);
+  }, [isDone]);
 
   const execution = activeExecution || latestExecution || null;
 
@@ -73,7 +78,12 @@ export function ExecutionPanel({
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Execution
           </span>
-          {!isDone && (
+          {!isDone && stopping && (
+            <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200 animate-pulse">
+              Stopping…
+            </Badge>
+          )}
+          {!isDone && !stopping && (
             <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-600 border-emerald-200 animate-pulse">
               Running
             </Badge>
@@ -86,6 +96,11 @@ export function ExecutionPanel({
           {isDone && lastLog?.type === 'execution:timeout' && (
             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-600 border-amber-200">
               Timeout
+            </Badge>
+          )}
+          {isDone && lastLog?.type === 'execution:cancelled' && (
+            <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">
+              Cancelled
             </Badge>
           )}
           {execution && (
@@ -122,11 +137,18 @@ export function ExecutionPanel({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50"
-              onClick={() => onCancelExecution(activeExecution.id)}
+              className={`h-6 text-[10px] ${stopping
+                ? 'text-red-400 cursor-not-allowed'
+                : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+              }`}
+              disabled={stopping}
+              onClick={() => {
+                setStopping(true);
+                onCancelExecution(activeExecution.id);
+              }}
             >
-              <StopCircle className="h-3 w-3 mr-1" />
-              Stop
+              <StopCircle className={`h-3 w-3 mr-1 ${stopping ? 'animate-spin' : ''}`} />
+              {stopping ? 'Stopping…' : 'Stop'}
             </Button>
           )}
           {isDone && latestExecution && (
