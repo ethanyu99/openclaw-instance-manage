@@ -275,11 +275,14 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
       return;
     }
 
+    // 始终用流式累积的完整内容覆盖 DB，避免 response.completed 事件里只有截断内容导致丢失
+    if (result.fullText) {
+      await store.updateTaskOutput(taskId, result.fullText);
+    }
     const task = await store.getTask(taskId);
     if (task && task.status === 'running') {
       const summary = result.fullText.slice(0, 500) || 'Task completed';
       await store.updateTask(taskId, { status: 'completed', summary });
-      await store.updateTaskOutput(taskId, result.fullText);
       await store.updateInstance(instanceId, { status: 'online' });
       broadcastToOwner(ownerId, {
         type: 'task:complete',
@@ -324,28 +327,31 @@ async function handleSSEEvent(
     case 'response.output_text.done': {
       const text = (event.text as string) || '';
       await store.updateTask(taskId, { summary: text.slice(0, 500) });
+      if (text) await store.updateTaskOutput(taskId, text);
       break;
     }
 
     case 'response.completed': {
       const output = event.response as Record<string, unknown> | undefined;
-      let summary = '';
+      let fullOutput = '';
       if (output?.output && Array.isArray(output.output)) {
         for (const item of output.output) {
           if (item.type === 'message' && Array.isArray(item.content)) {
             for (const part of item.content) {
               if (part.type === 'output_text') {
-                summary += part.text || '';
+                fullOutput += part.text || '';
               }
             }
           }
         }
       }
-      await store.updateTask(taskId, { status: 'completed', summary: summary.slice(0, 500) || 'Completed' });
+      const summaryForTask = fullOutput.slice(0, 500) || 'Completed';
+      await store.updateTask(taskId, { status: 'completed', summary: summaryForTask });
+      await store.updateTaskOutput(taskId, fullOutput);
       await store.updateInstance(instanceId, { status: 'online' });
       broadcastToOwner(ownerId, {
         type: 'task:complete',
-        payload: { taskId, status: 'completed', summary: summary.slice(0, 500) },
+        payload: { taskId, status: 'completed', summary: summaryForTask },
         instanceId,
         taskId,
         sessionKey,

@@ -1,4 +1,4 @@
-import { type ComponentProps, useState, useEffect } from 'react';
+import { type ComponentProps, useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -70,20 +70,42 @@ function MarkdownContent({ content }: { content: string }) {
 export function SessionDetailDialog({ session, open, onOpenChange, taskStream }: SessionDetailDialogProps) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const lastStreamContentRef = useRef<string>('');
+  const refetchAfterCompleteRef = useRef(false);
 
   const sessionKey = session?.sessionKey;
 
   useEffect(() => {
     if (open && sessionKey) {
       setLoading(true);
+      refetchAfterCompleteRef.current = false;
       fetchSessionDetail(sessionKey)
         .then(setDetail)
         .catch(() => setDetail(null))
         .finally(() => setLoading(false));
     } else {
       setDetail(null);
+      lastStreamContentRef.current = '';
     }
   }, [open, sessionKey]);
+
+  // task 刚完成时 taskStream 被清空，但 detail 里仍是 running，需立即 refetch 并保留上次流式内容直到拉取到 completed
+  useEffect(() => {
+    if (!open || !sessionKey || loading) return;
+    const exchanges = detail?.exchanges ?? [];
+    const hasRunning = exchanges.some(e => e.status === 'running');
+    if (hasRunning && !taskStream && lastStreamContentRef.current && !refetchAfterCompleteRef.current) {
+      refetchAfterCompleteRef.current = true;
+      setLoading(true);
+      fetchSessionDetail(sessionKey)
+        .then((d) => {
+          setDetail(d);
+          lastStreamContentRef.current = '';
+        })
+        .catch(() => setDetail(null))
+        .finally(() => setLoading(false));
+    }
+  }, [open, sessionKey, loading, taskStream, detail?.exchanges]);
 
   if (!session) return null;
 
@@ -91,7 +113,7 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden p-0">
+      <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[85vh] flex flex-col overflow-hidden p-0">
         <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b border-border/50">
           <div className="flex items-center gap-3">
             <DialogTitle className="text-base font-mono flex items-center gap-2">
@@ -108,7 +130,7 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream }:
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 bg-zinc-50/50 dark:bg-zinc-950/50">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto px-6 py-6 bg-zinc-50/50 dark:bg-zinc-950/50">
           {loading ? (
             <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
               Loading...
@@ -122,17 +144,17 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream }:
                       {new Date(exchange.timestamp).toLocaleTimeString([], { hour12: false })}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-blue-500 font-bold">❯</span>
-                        <span className="text-primary font-medium flex-1 whitespace-pre-wrap">{exchange.input}</span>
-                        <Badge variant={statusVariant[exchange.status] || 'outline'} className="text-[9px] h-4 rounded-sm uppercase tracking-wider shrink-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2">
+                        <span className="text-blue-500 font-bold shrink-0">❯</span>
+                        <span className="text-primary font-medium flex-1 min-w-0 whitespace-pre-wrap break-words">{exchange.input}</span>
+                        <Badge variant={statusVariant[exchange.status] || 'outline'} className="text-[9px] h-4 rounded-sm uppercase tracking-wider shrink-0 whitespace-nowrap flex-shrink-0">
                           {exchange.status}
                         </Badge>
                       </div>
 
-                      <div className="pl-4 border-l-2 border-muted/60 dark:border-muted/30 mt-2">
+                      <div className="pl-4 border-l-2 border-muted/60 dark:border-muted/30 mt-2 min-w-0">
                         {exchange.output ? (
-                          <div className="py-1 overflow-hidden font-sans">
+                          <div className="py-1 min-w-0 font-sans break-words overflow-visible">
                             <MarkdownContent content={exchange.output} />
                             {exchange.completedAt && (
                               <p className="text-[10px] text-muted-foreground font-mono mt-3 opacity-60">
@@ -141,21 +163,35 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream }:
                             )}
                           </div>
                         ) : exchange.status === 'running' && taskStream ? (
-                          <div className="py-1 overflow-hidden font-sans">
-                            <MarkdownContent content={taskStream} />
+                          <div className="py-1 min-w-0 font-sans break-words">
+                            {(() => {
+                              lastStreamContentRef.current = taskStream;
+                              return <MarkdownContent content={taskStream} />;
+                            })()}
                             <div className="flex items-center gap-2 text-muted-foreground mt-2">
                               <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
                               <span className="text-[11px]">Streaming...</span>
                             </div>
                           </div>
+                        ) : exchange.status === 'running' && lastStreamContentRef.current ? (
+                          <div className="py-1 min-w-0 font-sans break-words">
+                            <MarkdownContent content={lastStreamContentRef.current} />
+                            <div className="flex items-center gap-2 text-muted-foreground mt-2">
+                              <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                              <span className="text-[11px]">正在加载最终结果…</span>
+                            </div>
+                          </div>
                         ) : exchange.summary ? (
-                          <div className="py-1 overflow-hidden font-sans opacity-80">
+                          <div className="py-1 min-w-0 font-sans break-words opacity-80">
                             <MarkdownContent content={exchange.summary} />
                           </div>
                         ) : exchange.status === 'running' ? (
-                          <div className="py-2 flex items-center gap-2 text-muted-foreground">
-                            <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-[11px]">Executing...</span>
+                          <div className="py-3 text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                              <span className="text-[11px]">Executing...</span>
+                            </div>
+                            <p className="text-[11px] mt-2 opacity-70">正在执行，输出将在此处流式显示</p>
                           </div>
                         ) : null}
                       </div>
