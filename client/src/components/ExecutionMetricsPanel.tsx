@@ -22,8 +22,9 @@ export function ExecutionMetricsPanel({ execution }: ExecutionMetricsPanelProps)
       if (t.durationMs) totalTurnDuration += t.durationMs;
     }
 
-    const totalDurationMs = execution.completedAt
+        const totalDurationMs = execution.completedAt
       ? new Date(execution.completedAt).getTime() - new Date(execution.createdAt).getTime()
+      // eslint-disable-next-line react-hooks/purity -- Need current time for in-progress executions
       : Date.now() - new Date(execution.createdAt).getTime();
 
     return {

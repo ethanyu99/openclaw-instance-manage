@@ -59,13 +59,13 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
   // Auto-select single instance in share mode (no teams available)
   useEffect(() => {
     if (shareMode && teams.length === 0 && instances.length === 1 && targetInstances.length === 0 && !selectedTeam) {
-      setTargetInstances([instances[0]]);
+      setTargetInstances([instances[0]]); // eslint-disable-line react-hooks/set-state-in-effect -- Auto-select single instance in share mode
     }
   }, [shareMode, teams.length, instances, targetInstances.length, selectedTeam]);
 
   useEffect(() => {
     if (!value.startsWith('@')) {
-      setSuggestions([]);
+      setSuggestions([]); // eslint-disable-line react-hooks/set-state-in-effect -- Clear suggestions when not typing @mention
       return;
     }
 

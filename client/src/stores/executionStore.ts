@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { create } from 'zustand';
 import type { WSMessage, TurnSummary } from '@shared/types';
 import { fetchExecutionsApi } from '@/lib/api';

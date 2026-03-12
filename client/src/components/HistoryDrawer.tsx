@@ -41,7 +41,7 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
   }, []);
 
   useEffect(() => {
-    if (open) refresh();
+    if (open) refresh(); // eslint-disable-line react-hooks/set-state-in-effect -- Fetch data when drawer opens
   }, [open, refresh]);
 
   const handleOpenChange = (isOpen: boolean) => {

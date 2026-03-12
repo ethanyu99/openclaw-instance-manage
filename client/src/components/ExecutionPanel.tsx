@@ -66,7 +66,7 @@ export function ExecutionPanel(props: ExecutionPanelProps) {
     lastLog?.type === 'team:error';
 
   useEffect(() => {
-    if (isDone) setStopping(false);
+    if (isDone) setStopping(false); // eslint-disable-line react-hooks/set-state-in-effect -- Reset stopping flag when execution completes
   }, [isDone]);
 
   const execution = activeExecution || latestExecution || null;

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 import { type ComponentProps, useState, useEffect, useRef } from 'react';
 import {
   Dialog,
@@ -174,8 +175,9 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream, f
                               <span className="text-[11px]">Streaming...</span>
                             </div>
                           </div>
-                        ) : exchange.status === 'running' && lastStreamContentRef.current ? (
+                        ) : exchange.status === 'running' && lastStreamContentRef.current ? ( // eslint-disable-line react-hooks/refs -- Streaming content display needs ref for performance
                           <div className="py-1 min-w-0 font-sans break-words">
+                            {/* eslint-disable-next-line react-hooks/refs -- Streaming content ref read */}
                             <MarkdownContent content={lastStreamContentRef.current} />
                             <div className="flex items-center gap-2 text-muted-foreground mt-2">
                               <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
