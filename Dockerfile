@@ -1,48 +1,74 @@
-FROM node:20-slim AS builder
+# ============================================
+# Stage 1: 依赖安装
+# ============================================
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY server/package.json server/package-lock.json* ./server/
+COPY client/package.json client/package-lock.json* ./client/
+
+RUN npm ci --ignore-scripts && \
+    cd server && npm ci --ignore-scripts && \
+    cd ../client && npm ci --ignore-scripts
+
+# ============================================
+# Stage 2: 构建
+# ============================================
+FROM node:20-alpine AS builder
 
 ARG VITE_GOOGLE_CLIENT_ID
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
 WORKDIR /app
 
-# Install root deps
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/server/node_modules ./server/node_modules
+COPY --from=deps /app/client/node_modules ./client/node_modules
 
-# Install server deps
-COPY server/package.json server/package-lock.json* ./server/
-RUN cd server && npm install
-
-# Install client deps
-COPY client/package.json client/package-lock.json* ./client/
-RUN cd client && npm install
-
-# Copy source
 COPY shared/ ./shared/
 COPY server/ ./server/
 COPY client/ ./client/
+COPY package.json ./
 
-# Build client (picks up VITE_* env vars at build time)
-RUN cd client && npm run build
+RUN cd client && npm run build && \
+    cd ../server && npm run build
 
-# Build server
-RUN cd server && npm run build
+# ============================================
+# Stage 3: 生产依赖
+# ============================================
+FROM node:20-alpine AS prod-deps
 
-# Production stage
-FROM node:20-slim
+WORKDIR /app/server
+
+COPY server/package.json server/package-lock.json* ./
+
+RUN npm ci --omit=dev --ignore-scripts
+
+# ============================================
+# Stage 4: 运行
+# ============================================
+FROM node:20-alpine AS runner
+
+RUN apk add --no-cache tini && \
+    addgroup -g 1001 -S app && \
+    adduser -S app -u 1001 -G app
 
 WORKDIR /app
 
-COPY --from=builder /app/server/package.json /app/server/package-lock.json* ./server/
-COPY --from=builder /app/server/dist ./server/dist
-COPY --from=builder /app/server/node_modules ./server/node_modules
-COPY --from=builder /app/server/openclaw ./server/dist/server/openclaw
-COPY --from=builder /app/client/dist ./client/dist
+COPY --from=prod-deps --chown=app:app /app/server/node_modules ./server/node_modules
+COPY --from=builder --chown=app:app /app/server/dist ./server/dist
+COPY --from=builder --chown=app:app /app/server/package.json ./server/package.json
+COPY --from=builder --chown=app:app /app/client/dist ./client/dist
 
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV CLIENT_DIST_PATH=/app/client/dist
 
+USER app
+
 EXPOSE 3001
 
+ENTRYPOINT ["tini", "--"]
 CMD ["node", "server/dist/server/src/index.js"]
