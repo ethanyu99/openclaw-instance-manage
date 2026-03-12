@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { store } from '../store';
 import { TEAM_TEMPLATES } from '../team-templates';
 import type { ClawRole } from '../../../shared/types';
+import { AppError } from '../middleware/error-handler';
 
 export const teamRouter = Router();
 
@@ -15,45 +16,40 @@ teamRouter.get('/templates', (_req, res) => {
   res.json({ templates: TEAM_TEMPLATES });
 });
 
-teamRouter.get('/:id', async (req, res) => {
-  const ownerId = req.userContext!.userId;
-  const team = await store.getTeam(ownerId, req.params.id);
-  if (!team) return res.status(404).json({ error: 'Team not found' });
-  res.json(team);
+teamRouter.get('/:id', async (req, res, next) => {
+  try {
+    const ownerId = req.userContext!.userId;
+    const team = await store.getTeam(ownerId, req.params.id);
+    if (!team) throw new AppError(404, 'Team not found');
+    res.json(team);
+  } catch (err) { next(err); }
 });
 
-teamRouter.post('/', async (req, res) => {
-  const ownerId = req.userContext!.userId;
-  const { name, description, templateId, roles } = req.body;
+teamRouter.post('/', async (req, res, next) => {
+  try {
+    const ownerId = req.userContext!.userId;
+    const { name, description, templateId, roles } = req.body;
 
-  if (!name) {
-    return res.status(400).json({ error: 'name is required' });
-  }
-  if (await store.isTeamNameTaken(ownerId, name)) {
-    return res.status(400).json({ error: 'Team name must be unique' });
-  }
+    if (!name) throw new AppError(400, 'name is required');
+    if (await store.isTeamNameTaken(ownerId, name)) throw new AppError(400, 'Team name must be unique', 'DUPLICATE_NAME');
 
-  let roleDefs: { name: string; description: string; capabilities: string[]; isLead: boolean }[];
+    let roleDefs: { name: string; description: string; capabilities: string[]; isLead: boolean }[];
 
-  if (templateId) {
-    const template = TEAM_TEMPLATES.find(t => t.id === templateId);
-    if (!template) {
-      return res.status(400).json({ error: 'Template not found' });
+    if (templateId) {
+      const template = TEAM_TEMPLATES.find(t => t.id === templateId);
+      if (!template) throw new AppError(400, 'Template not found');
+      roleDefs = template.roles;
+    } else if (roles && Array.isArray(roles) && roles.length > 0) {
+      roleDefs = roles;
+    } else {
+      throw new AppError(400, 'Either templateId or roles array is required');
     }
-    roleDefs = template.roles;
-  } else if (roles && Array.isArray(roles) && roles.length > 0) {
-    roleDefs = roles;
-  } else {
-    return res.status(400).json({ error: 'Either templateId or roles array is required' });
-  }
 
-  const hasLead = roleDefs.some(r => r.isLead);
-  if (!hasLead) {
-    return res.status(400).json({ error: 'At least one role must be designated as Lead' });
-  }
+    if (!roleDefs.some(r => r.isLead)) throw new AppError(400, 'At least one role must be designated as Lead');
 
-  const team = await store.createTeam(ownerId, { name, description: description || '' }, roleDefs);
-  res.status(201).json(team);
+    const team = await store.createTeam(ownerId, { name, description: description || '' }, roleDefs);
+    res.status(201).json(team);
+  } catch (err) { next(err); }
 });
 
 teamRouter.put('/:id', async (req, res) => {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { store } from '../store';
+import { AppError } from '../middleware/error-handler';
 
 export const taskRouter = Router();
 
@@ -10,9 +11,11 @@ taskRouter.get('/', async (req, res) => {
   res.json(tasks);
 });
 
-taskRouter.get('/:id', async (req, res) => {
-  const ownerId = req.userContext!.userId;
-  const task = await store.getTask(req.params.id);
-  if (!task || task.ownerId !== ownerId) return res.status(404).json({ error: 'Task not found' });
-  res.json(task);
+taskRouter.get('/:id', async (req, res, next) => {
+  try {
+    const ownerId = req.userContext!.userId;
+    const task = await store.getTask(req.params.id);
+    if (!task || task.ownerId !== ownerId) throw new AppError(404, 'Task not found');
+    res.json(task);
+  } catch (err) { next(err); }
 });

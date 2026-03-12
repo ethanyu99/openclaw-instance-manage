@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { store } from '../store';
 import { createSandbox, killSandbox } from '../sandbox';
+import { AppError } from '../middleware/error-handler';
 
 export const instanceRouter = Router();
 
@@ -11,52 +12,48 @@ instanceRouter.get('/', async (req, res) => {
   res.json({ instances, stats });
 });
 
-instanceRouter.get('/:id', async (req, res) => {
-  const ownerId = req.userContext!.userId;
-  const instance = await store.getInstance(ownerId, req.params.id);
-  if (!instance) return res.status(404).json({ error: 'Instance not found' });
-  res.json(instance);
+instanceRouter.get('/:id', async (req, res, next) => {
+  try {
+    const ownerId = req.userContext!.userId;
+    const instance = await store.getInstance(ownerId, req.params.id);
+    if (!instance) throw new AppError(404, 'Instance not found');
+    res.json(instance);
+  } catch (err) { next(err); }
 });
 
-instanceRouter.post('/', async (req, res) => {
-  const ownerId = req.userContext!.userId;
-  const { name, endpoint, description, token } = req.body;
-  if (!name || !endpoint) {
-    return res.status(400).json({ error: 'name and endpoint are required' });
-  }
-  if (await store.isNameTaken(ownerId, name)) {
-    return res.status(400).json({ error: 'Instance name must be unique' });
-  }
-  const instance = await store.createInstance(ownerId, {
-    name,
-    endpoint,
-    description: description || '',
-    token: token || undefined,
-  });
-  res.status(201).json(instance);
+instanceRouter.post('/', async (req, res, next) => {
+  try {
+    const ownerId = req.userContext!.userId;
+    const { name, endpoint, description, token } = req.body;
+    if (!name || !endpoint) throw new AppError(400, 'name and endpoint are required');
+    if (await store.isNameTaken(ownerId, name)) throw new AppError(400, 'Instance name must be unique', 'DUPLICATE_NAME');
+    const instance = await store.createInstance(ownerId, {
+      name,
+      endpoint,
+      description: description || '',
+      token: token || undefined,
+    });
+    res.status(201).json(instance);
+  } catch (err) { next(err); }
 });
 
-instanceRouter.put('/:id', async (req, res) => {
-  const ownerId = req.userContext!.userId;
-  const { name, endpoint, description, token } = req.body;
+instanceRouter.put('/:id', async (req, res, next) => {
+  try {
+    const ownerId = req.userContext!.userId;
+    const { name, endpoint, description, token } = req.body;
+    if (!await store.getInstance(ownerId, req.params.id)) throw new AppError(404, 'Instance not found');
+    if (name && await store.isNameTaken(ownerId, name, req.params.id)) throw new AppError(400, 'Instance name must be unique', 'DUPLICATE_NAME');
+    
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (endpoint !== undefined) updateData.endpoint = endpoint;
+    if (description !== undefined) updateData.description = description;
+    if (token !== undefined) updateData.token = token;
 
-  if (!await store.getInstance(ownerId, req.params.id)) {
-    return res.status(404).json({ error: 'Instance not found' });
-  }
-
-  if (name && await store.isNameTaken(ownerId, name, req.params.id)) {
-    return res.status(400).json({ error: 'Instance name must be unique' });
-  }
-  
-  const updateData: any = {};
-  if (name !== undefined) updateData.name = name;
-  if (endpoint !== undefined) updateData.endpoint = endpoint;
-  if (description !== undefined) updateData.description = description;
-  if (token !== undefined) updateData.token = token;
-
-  const instance = await store.updateInstance(req.params.id, updateData);
-  if (!instance) return res.status(404).json({ error: 'Instance not found' });
-  res.json(instance);
+    const instance = await store.updateInstance(req.params.id, updateData);
+    if (!instance) throw new AppError(404, 'Instance not found');
+    res.json(instance);
+  } catch (err) { next(err); }
 });
 
 instanceRouter.delete('/:id', async (req, res) => {

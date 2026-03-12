@@ -25,6 +25,7 @@ import { initDB } from './db';
 import { initStore, store } from './store';
 import { initRedis } from './redis';
 import { initSkillLoader } from './skill-loader';
+import { errorHandler } from './middleware/error-handler';
 
 const app = express();
 const server = http.createServer(app);
@@ -61,6 +62,9 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
+// Global error handling middleware (must be after all routes)
+app.use(errorHandler);
+
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 async function start() {
@@ -80,6 +84,15 @@ async function start() {
     console.log(`Server running on port ${PORT}`);
   });
 }
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+  setTimeout(() => process.exit(1), 1000);
+});
 
 start().catch(err => {
   console.error('Failed to start server:', err);
