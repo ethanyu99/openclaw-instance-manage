@@ -432,6 +432,9 @@ function validateAccessToken(req: IncomingMessage): boolean {
   }
 }
 
+const HEARTBEAT_INTERVAL = 30_000; // 30s ping interval
+const CLIENT_TIMEOUT = 60_000;     // 60s no-pong → terminate
+
 export function setupWebSocket(wss: WebSocketServer) {
   // Subscribe to Redis for cross-process WS messages
   const sub = getSubscriber();
@@ -439,6 +442,23 @@ export function setupWebSocket(wss: WebSocketServer) {
   sub.on('pmessage', (_pattern, channel, data) => {
     const ownerId = channel.slice(WS_CHANNEL_PREFIX.length);
     localBroadcastToOwner(ownerId, data);
+  });
+
+  // Heartbeat: ping all clients every 30s, terminate if no pong within 60s
+  const heartbeatTimer = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      const extWs = ws as WebSocket & { isAlive?: boolean };
+      if (extWs.isAlive === false) {
+        return extWs.terminate();
+      }
+      extWs.isAlive = false;
+      extWs.ping();
+    });
+  }, HEARTBEAT_INTERVAL);
+
+  // Clean up heartbeat timer when server closes
+  wss.on('close', () => {
+    clearInterval(heartbeatTimer);
   });
 
   wss.on('connection', async (ws, req) => {
@@ -459,6 +479,10 @@ export function setupWebSocket(wss: WebSocketServer) {
       const shareOwnerId = st.ownerId;
       const shareTargetId = st.targetId;
       const shareType = st.shareType;
+
+      // Mark connection as alive for heartbeat
+      (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
+      ws.on('pong', () => { (ws as WebSocket & { isAlive?: boolean }).isAlive = true; });
 
       clients.set(ws, {
         ws,
@@ -553,6 +577,10 @@ export function setupWebSocket(wss: WebSocketServer) {
       ws.close(4002, 'Authentication required — provide a valid token');
       return;
     }
+
+    // Mark connection as alive for heartbeat
+    (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
+    ws.on('pong', () => { (ws as WebSocket & { isAlive?: boolean }).isAlive = true; });
 
     clients.set(ws, { ws, userId });
 
