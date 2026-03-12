@@ -48,7 +48,7 @@ interface LocalSkillsListProps {
 
 export function LocalSkillsList({
   registry, installedIds, opState, loading,
-  onInstall, onUninstall, onInstallAll, onPreview, installedCount,
+  onInstall, onUninstall, onInstallAll, onPreview,
 }: LocalSkillsListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory | 'all'>('all');
