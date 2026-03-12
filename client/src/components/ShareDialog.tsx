@@ -29,6 +29,9 @@ const DURATION_OPTIONS: { value: ShareDuration; label: string }[] = [
   { value: '1d', label: '1 Day' },
   { value: '2d', label: '2 Days' },
   { value: '3d', label: '3 Days' },
+  { value: '1w', label: '1 Week' },
+  { value: '1M', label: '1 Month' },
+  { value: 'permanent', label: 'Permanent' },
 ];
 
 export function ShareDialog({ open, onOpenChange, shareType, targetId, targetName }: ShareDialogProps) {
@@ -154,7 +157,9 @@ export function ShareDialog({ open, onOpenChange, shareType, targetId, targetNam
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Link expires in {DURATION_OPTIONS.find(o => o.value === duration)?.label}
+                {duration === 'permanent'
+                  ? 'This link never expires'
+                  : `Link expires in ${DURATION_OPTIONS.find(o => o.value === duration)?.label}`}
               </p>
             </div>
           )}

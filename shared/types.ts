@@ -235,7 +235,7 @@ export interface ShareToken {
   createdAt: string;
 }
 
-export type ShareDuration = '1h' | '3h' | '12h' | '1d' | '2d' | '3d';
+export type ShareDuration = '1h' | '3h' | '12h' | '1d' | '2d' | '3d' | '1w' | '1M' | 'permanent';
 
 export interface ShareViewData {
   shareType: 'team' | 'instance';

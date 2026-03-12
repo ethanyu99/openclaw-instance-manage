@@ -480,6 +480,12 @@ export async function fetchSessionDetail(sessionKey: string): Promise<SessionDet
   return res.json();
 }
 
+export async function fetchShareSessionDetail(shareToken: string, sessionKey: string): Promise<SessionDetail> {
+  const res = await fetch(`${API_BASE}/share/view/${shareToken}/sessions/${encodeURIComponent(sessionKey)}`);
+  if (!res.ok) throw new Error('Failed to fetch session detail');
+  return res.json();
+}
+
 export async function deleteSessionApi(sessionKey: string): Promise<void> {
   const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionKey)}`, {
     method: 'DELETE',

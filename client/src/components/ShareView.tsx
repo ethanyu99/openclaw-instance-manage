@@ -3,9 +3,11 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye, Clock, Users, Star, AlertCircle, Loader2 } from 'lucide-react';
-import { fetchShareView, createShareWebSocket } from '@/lib/api';
+import { fetchShareView, createShareWebSocket, fetchShareSessionDetail } from '@/lib/api';
 import { TaskInput } from '@/components/TaskInput';
 import { ExecutionPanel } from '@/components/ExecutionPanel';
+import { SessionDetailDialog } from '@/components/SessionDetailDialog';
+import { ExecutionReportDialog } from '@/components/ExecutionReportDialog';
 import type { ShareViewData, InstancePublic, TeamPublic, WSMessage, TurnSummary } from '@shared/types';
 import type { ExecutionHistory } from '@/hooks/types';
 
@@ -31,6 +33,8 @@ const statusBadgeVariant: Record<string, 'default' | 'secondary' | 'destructive'
 function formatTimeRemaining(expiresAt: string): string {
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return 'Expired';
+  const years = Math.floor(diff / (365.25 * 86400000));
+  if (years >= 50) return 'Permanent';
   const hours = Math.floor(diff / 3600000);
   const minutes = Math.floor((diff % 3600000) / 60000);
   if (hours >= 24) {
@@ -62,6 +66,25 @@ export function ShareView({ token }: ShareViewProps) {
   const [executionStreams, setExecutionStreams] = useState<Record<string, string>>({});
   const activeExecutionRef = useRef<ExecutionHistory | null>(null);
   const [activeExecutionSnapshot, setActiveExecutionSnapshot] = useState<ExecutionHistory | null>(null);
+
+  const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<{
+    sessionKey: string;
+    ownerId: string;
+    instanceId: string;
+    instanceName: string;
+    createdAt: string;
+    updatedAt: string;
+  } | null>(null);
+  const [selectedTaskInstanceId, setSelectedTaskInstanceId] = useState<string | null>(null);
+
+  const [execDetailOpen, setExecDetailOpen] = useState(false);
+  const [selectedExecution, setSelectedExecution] = useState<ExecutionHistory | null>(null);
+
+  const shareFetchDetail = useCallback(
+    (sessionKey: string) => fetchShareSessionDetail(token, sessionKey),
+    [token],
+  );
 
   const loadShareData = useCallback(async () => {
     try {
@@ -601,7 +624,23 @@ export function ShareView({ token }: ShareViewProps) {
                     </div>
                   )}
                   {instance.currentTask && (
-                    <div className="rounded-lg border border-border/60 bg-card p-3 text-sm space-y-2">
+                    <div
+                      className="rounded-lg border border-border/60 bg-card p-3 text-sm space-y-2 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
+                      onClick={() => {
+                        if (instance.currentTask?.sessionKey) {
+                          setSelectedSession({
+                            sessionKey: instance.currentTask.sessionKey,
+                            ownerId: instance.currentTask.ownerId,
+                            instanceId: instance.id,
+                            instanceName: instance.name,
+                            createdAt: instance.currentTask.createdAt,
+                            updatedAt: instance.currentTask.updatedAt,
+                          });
+                          setSelectedTaskInstanceId(instance.id);
+                          setSessionDetailOpen(true);
+                        }
+                      }}
+                    >
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-xs text-foreground/80 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
@@ -661,7 +700,10 @@ export function ShareView({ token }: ShareViewProps) {
             setExecutionStreams({});
             setActiveExecutionSnapshot(null);
           }}
-          onViewDetail={() => {}}
+          onViewDetail={(exec: ExecutionHistory) => {
+            setSelectedExecution(exec);
+            setExecDetailOpen(true);
+          }}
         />
       )}
 
@@ -672,6 +714,20 @@ export function ShareView({ token }: ShareViewProps) {
         onDispatch={handleDispatchTask}
         onTeamDispatch={handleTeamDispatch}
         shareMode
+      />
+
+      <SessionDetailDialog
+        session={selectedSession}
+        open={sessionDetailOpen}
+        onOpenChange={setSessionDetailOpen}
+        taskStream={selectedTaskInstanceId ? taskStreams[selectedTaskInstanceId] : undefined}
+        fetchDetail={shareFetchDetail}
+      />
+
+      <ExecutionReportDialog
+        execution={selectedExecution}
+        open={execDetailOpen}
+        onOpenChange={setExecDetailOpen}
       />
     </div>
   );

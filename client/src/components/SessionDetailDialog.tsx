@@ -17,6 +17,7 @@ interface SessionDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   taskStream?: string;
+  fetchDetail?: (sessionKey: string) => Promise<SessionDetail>;
 }
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -67,19 +68,20 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-export function SessionDetailDialog({ session, open, onOpenChange, taskStream }: SessionDetailDialogProps) {
+export function SessionDetailDialog({ session, open, onOpenChange, taskStream, fetchDetail }: SessionDetailDialogProps) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const lastStreamContentRef = useRef<string>('');
   const refetchAfterCompleteRef = useRef(false);
 
   const sessionKey = session?.sessionKey;
+  const doFetch = fetchDetail ?? fetchSessionDetail;
 
   useEffect(() => {
     if (open && sessionKey) {
       setLoading(true);
       refetchAfterCompleteRef.current = false;
-      fetchSessionDetail(sessionKey)
+      doFetch(sessionKey)
         .then(setDetail)
         .catch(() => setDetail(null))
         .finally(() => setLoading(false));
@@ -89,7 +91,6 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream }:
     }
   }, [open, sessionKey]);
 
-  // task 刚完成时 taskStream 被清空，但 detail 里仍是 running，需立即 refetch 并保留上次流式内容直到拉取到 completed
   useEffect(() => {
     if (!open || !sessionKey || loading) return;
     const exchanges = detail?.exchanges ?? [];
@@ -97,7 +98,7 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream }:
     if (hasRunning && !taskStream && lastStreamContentRef.current && !refetchAfterCompleteRef.current) {
       refetchAfterCompleteRef.current = true;
       setLoading(true);
-      fetchSessionDetail(sessionKey)
+      doFetch(sessionKey)
         .then((d) => {
           setDetail(d);
           lastStreamContentRef.current = '';

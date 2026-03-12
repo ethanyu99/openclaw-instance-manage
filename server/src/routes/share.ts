@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import type { ShareDuration } from '../../../shared/types';
 import { store } from '../store';
+import { loadSessionDetail } from '../persistence';
 
-const VALID_DURATIONS: ShareDuration[] = ['1h', '3h', '12h', '1d', '2d', '3d'];
+const VALID_DURATIONS: ShareDuration[] = ['1h', '3h', '12h', '1d', '2d', '3d', '1w', '1M', 'permanent'];
 
 export const shareRouter = Router();
 
@@ -116,4 +117,34 @@ shareViewRouter.get('/:token', async (req, res) => {
       expiresAt: st.expiresAt,
     });
   }
+});
+
+shareViewRouter.get('/:token/sessions/:sessionKey', async (req, res) => {
+  const st = await store.getShareTokenByToken(req.params.token);
+  if (!st) {
+    res.status(404).json({ error: 'Share link is invalid or expired' });
+    return;
+  }
+
+  const { sessionKey } = req.params;
+  const session = await loadSessionDetail(st.ownerId, sessionKey);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
+  if (st.shareType === 'instance') {
+    if (session.instanceId !== st.targetId) {
+      res.status(403).json({ error: 'Session does not belong to shared instance' });
+      return;
+    }
+  } else {
+    const inst = await store.getInstance(st.ownerId, session.instanceId);
+    if (!inst || inst.teamId !== st.targetId) {
+      res.status(403).json({ error: 'Session does not belong to shared team' });
+      return;
+    }
+  }
+
+  res.json(session);
 });

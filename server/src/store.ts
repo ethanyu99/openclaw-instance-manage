@@ -27,6 +27,9 @@ const SHARE_DURATION_MS: Record<ShareDuration, number> = {
   '1d': 86400000,
   '2d': 172800000,
   '3d': 259200000,
+  '1w': 604800000,
+  '1M': 2592000000,
+  'permanent': 100 * 365.25 * 86400000,
 };
 
 const MAX_TEAM_HISTORY = 10;
