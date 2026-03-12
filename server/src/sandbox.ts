@@ -133,22 +133,22 @@ export async function createSandbox(
     const config = generateOpenClawConfig(apiKey, gwToken);
     const configContent = JSON.stringify(config, null, 2);
 
-    await sandbox.commands.run('mkdir -p /home/user/.openclaw', { timeoutMs: 10_000 });
+    await sandbox.commands.run('mkdir -p /home/user/.openclaw', { timeoutMs: 30_000 });
     await sandbox.files.write(OPENCLAW_CONFIG_PATH, configContent);
     await sandbox.commands.run(
       'chmod 755 /home/user /home/user/.openclaw && chmod 644 /home/user/.openclaw/config.json',
-      { timeoutMs: 10_000 },
+      { timeoutMs: 30_000 },
     );
     await sandbox.commands.run(
       'chmod -R 755 /usr/local/lib/node_modules/openclaw/extensions/ 2>/dev/null || true',
-      { timeoutMs: 10_000 },
+      { timeoutMs: 30_000 },
     );
     emit({ step: 'config_written', message: 'OpenClaw configuration written' });
 
     emit({ step: 'starting_gateway', message: `Starting OpenClaw Gateway on port ${GATEWAY_PORT}` });
     await sandbox.commands.run(
       `nohup bash -c 'OPENCLAW_CONFIG_PATH=${OPENCLAW_CONFIG_PATH} openclaw gateway --port ${GATEWAY_PORT} --bind lan' > /tmp/gateway.log 2>&1 &`,
-      { timeoutMs: 10_000 },
+      { timeoutMs: 30_000 },
     );
 
     const maxChecks = 120;
@@ -157,7 +157,7 @@ export async function createSandbox(
       try {
         const result = await sandbox.commands.run(
           `curl -s --max-time 2 -o /dev/null -w "%{http_code}" http://localhost:${GATEWAY_PORT}/ 2>/dev/null; echo`,
-          { timeoutMs: 10_000 },
+          { timeoutMs: 30_000 },
         );
         if (result.stdout?.trim() === '200') {
           ready = true;
@@ -175,7 +175,7 @@ export async function createSandbox(
     if (!ready) {
       let logText = '';
       try {
-        const logResult = await sandbox.commands.run('tail -30 /tmp/gateway.log 2>&1 || true', { timeoutMs: 5_000 });
+        const logResult = await sandbox.commands.run('tail -30 /tmp/gateway.log 2>&1 || true', { timeoutMs: 30_000 });
         logText = logResult.stdout?.trim() || '';
       } catch { /* ignore */ }
       console.error('[sandbox] Gateway failed to start. Log:', logText || '(empty)');
@@ -187,7 +187,7 @@ export async function createSandbox(
     await sandbox.files.write('/tmp/device-auto-approve.sh', DEVICE_AUTO_APPROVE_SCRIPT);
     await sandbox.commands.run(
       'nohup bash /tmp/device-auto-approve.sh > /tmp/device-auto-approve.log 2>&1 &',
-      { timeoutMs: 10_000 },
+      { timeoutMs: 30_000 },
     );
     emit({ step: 'daemon_started', message: 'Device auto-approve daemon started' });
 
