@@ -22,6 +22,8 @@ interface InstanceState {
 
   _taskContentRef: Record<string, string>;
   _pendingExchanges: Record<string, PendingExchange>;
+  _streamBuffer: Record<string, string>;
+  _streamFlushTimer: ReturnType<typeof setTimeout> | null;
 }
 
 function computeStats(instances: InstancePublic[]): InstanceStats {
@@ -44,6 +46,8 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
   _notifyFn: null,
   _taskContentRef: {},
   _pendingExchanges: {},
+  _streamBuffer: {},
+  _streamFlushTimer: null,
 
   setNotifyCallback: (fn) => set({ _notifyFn: fn }),
 
@@ -105,16 +109,32 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
 
       case 'task:stream': {
         const chunk = msg.payload.chunk || '';
-        set(prev => ({
-          taskStreams: {
-            ...prev.taskStreams,
-            [msg.instanceId!]: (prev.taskStreams[msg.instanceId!] || '') + chunk,
-          },
-        }));
+        const instanceId = msg.instanceId!;
+
+        // Buffer stream chunks and flush every 100ms
+        state._streamBuffer[instanceId] = (state._streamBuffer[instanceId] || '') + chunk;
 
         if (msg.taskId) {
           state._taskContentRef[msg.taskId] = (state._taskContentRef[msg.taskId] || '') + chunk;
         }
+
+        if (!state._streamFlushTimer) {
+          state._streamFlushTimer = setTimeout(() => {
+            const s = get();
+            const buffer = { ...s._streamBuffer };
+            s._streamBuffer = {};
+            s._streamFlushTimer = null;
+
+            set(prev => {
+              const nextStreams = { ...prev.taskStreams };
+              for (const [id, buffered] of Object.entries(buffer)) {
+                nextStreams[id] = (nextStreams[id] || '') + buffered;
+              }
+              return { taskStreams: nextStreams };
+            });
+          }, 100);
+        }
+
         if (msg.taskId && msg.payload.summary) {
           const updated = state.instances.map(inst =>
             inst.id === msg.instanceId && inst.currentTask

@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { InstancePublic } from '@shared/types';
 import { deleteInstance, checkHealth, updateInstance } from '@/lib/api';
 import { useWSStore } from '@/stores/wsStore';
+import { useInstanceStore } from '@/stores/instanceStore';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 import { SandboxConfigDialog } from '@/components/SandboxConfigDialog';
 import { ShareDialog } from '@/components/ShareDialog';
@@ -18,7 +19,6 @@ import { FileBrowserDialog } from '@/components/FileBrowserDialog';
 
 interface InstanceCardProps {
   instance: InstancePublic;
-  taskStream?: string;
   onRefresh: () => void;
 }
 
@@ -34,7 +34,9 @@ const statusBadgeVariant: Record<string, 'default' | 'secondary' | 'destructive'
   offline: 'outline',
 };
 
-export function InstanceCard({ instance, taskStream, onRefresh }: InstanceCardProps) {
+export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
+  // Subscribe to this instance's stream only (avoids re-render on other instances' streams)
+  const taskStream = useInstanceStore(s => s.taskStreams[instance.id]);
   const cancelTask = useWSStore(s => s.cancelTask);
   const [detailOpen, setDetailOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
