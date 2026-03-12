@@ -382,10 +382,24 @@ async function handleTaskFailure(ownerId: string, instanceId: string, taskId: st
   });
 }
 
-function extractUserId(req: IncomingMessage): string | null {
+function extractAuthenticatedUserId(req: IncomingMessage): string | null {
   try {
     const url = new URL(req.url || '', `http://${req.headers.host}`);
-    return url.searchParams.get('userId');
+    const token = url.searchParams.get('token');
+
+    // Try JWT first
+    if (token) {
+      const payload = verifyToken(token);
+      if (payload) return payload.userId;
+    }
+
+    // Try ACCESS_TOKEN — binds to fixed admin userId
+    const accessToken = process.env.ACCESS_TOKEN;
+    if (accessToken && token === accessToken) {
+      return process.env.ADMIN_USER_ID || 'admin';
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -533,10 +547,10 @@ export function setupWebSocket(wss: WebSocketServer) {
       return;
     }
 
-    // Normal connection
-    const userId = extractUserId(req);
+    // Normal connection — userId derived from authenticated token, never from client query
+    const userId = extractAuthenticatedUserId(req);
     if (!userId) {
-      ws.close(4002, 'userId required');
+      ws.close(4002, 'Authentication required — provide a valid token');
       return;
     }
 

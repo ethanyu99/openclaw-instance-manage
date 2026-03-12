@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 export interface UserContext {
   userId: string;
@@ -14,8 +15,22 @@ declare global {
   }
 }
 
+// In production, JWT_SECRET must be explicitly set.
+// In development, a random ephemeral secret is generated per process start.
+let _devSecret: string | undefined;
+
 function getJwtSecret(): string {
-  return process.env.JWT_SECRET || 'openclaw-default-jwt-secret';
+  if (process.env.JWT_SECRET) {
+    return process.env.JWT_SECRET;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET environment variable must be set in production');
+  }
+  if (!_devSecret) {
+    _devSecret = crypto.randomBytes(64).toString('hex');
+    console.warn('[auth] WARNING: No JWT_SECRET set — using ephemeral random secret (dev mode only)');
+  }
+  return _devSecret;
 }
 
 const JWT_EXPIRES_IN = '30d';
@@ -50,14 +65,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   }
 
   // Legacy static ACCESS_TOKEN (for programmatic / CLI access)
+  // Binds to a fixed admin userId — X-User-Id header is ignored to prevent impersonation.
   const accessToken = process.env.ACCESS_TOKEN;
   if (accessToken && token === accessToken) {
-    const userId = req.headers['x-user-id'] as string;
-    if (!userId) {
-      res.status(400).json({ error: 'X-User-Id header is required with ACCESS_TOKEN' });
-      return;
-    }
-    req.userContext = { userId };
+    const adminUserId = process.env.ADMIN_USER_ID || 'admin';
+    req.userContext = { userId: adminUserId };
     return next();
   }
 

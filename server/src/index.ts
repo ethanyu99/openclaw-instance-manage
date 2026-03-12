@@ -30,7 +30,21 @@ const app = express();
 const server = http.createServer(app);
 const PORT = parseInt(process.env.PORT || '3002', 10);
 
-app.use(cors());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use('/api/instances', authMiddleware, instanceRouter);
@@ -42,7 +56,7 @@ app.use('/api/instances', authMiddleware, sandboxFilesRouter);
 app.use('/api/sessions', authMiddleware, sessionRouter);
 app.use('/api/executions', authMiddleware, executionRouter);
 app.use('/api/skills', authMiddleware, skillsRouter);
-app.use('/api/upload', uploadRouter);
+app.use('/api/upload', authMiddleware, uploadRouter);
 app.use('/api/auth', googleAuthRouter);
 app.use('/api/share/view', shareViewRouter);
 app.use('/api/share', authMiddleware, shareRouter);

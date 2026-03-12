@@ -7,7 +7,6 @@ const ALLOWED_TYPES = [
   'image/png',
   'image/gif',
   'image/webp',
-  'image/svg+xml',
 ];
 
 const upload = multer({
