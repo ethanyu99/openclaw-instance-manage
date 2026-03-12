@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy
+        run: railway up --service ${{ vars.RAILWAY_SERVICE_ID }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Health check
+        run: |
+          echo "等待部署生效..."
+          sleep 30
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.PRODUCTION_URL }}/api/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ 健康检查通过"
+              exit 0
+            fi
+            echo "尝试 $i/10 — 状态码: $STATUS"
+            sleep 10
+          done
+          echo "❌ 健康检查失败"
+          exit 1
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "🚨 Lobster Squad 部署失败! PR: ${{ github.event.head_commit.message }}"
+            }
