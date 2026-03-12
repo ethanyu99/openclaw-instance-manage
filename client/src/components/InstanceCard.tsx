@@ -14,7 +14,7 @@ import { useInstanceStore } from '@/stores/instanceStore';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 import { SandboxConfigDialog } from '@/components/SandboxConfigDialog';
 import { ShareDialog } from '@/components/ShareDialog';
-import { SkillsManagerDialog } from '@/components/SkillsManagerDialog';
+import { SkillsManagerDialog } from '@/components/skills/SkillsManagerDialog';
 import { FileBrowserDialog } from '@/components/FileBrowserDialog';
 
 interface InstanceCardProps {
