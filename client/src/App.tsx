@@ -128,7 +128,6 @@ function MainApp() {
   // ── Store subscriptions ──
   const instances = useInstanceStore(s => s.instances);
   const stats = useInstanceStore(s => s.stats);
-  const taskStreams = useInstanceStore(s => s.taskStreams);
   const setNotifyCallback = useInstanceStore(s => s.setNotifyCallback);
   const refreshInstances = useInstanceStore(s => s.loadInstances);
 
@@ -232,7 +231,6 @@ function MainApp() {
                     <InstanceCard
                       key={inst.id}
                       instance={inst}
-                      taskStream={taskStreams[inst.id]}
                       onRefresh={refreshInstances}
                     />
                   ))
