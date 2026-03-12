@@ -150,13 +150,17 @@ export async function initStore() {
     console.log(`[store] Marked ${result.rowCount} interrupted tasks as failed`);
   }
 
-  // Flush stale Redis caches
+  // Flush stale Redis caches using SCAN (non-blocking) instead of KEYS
   try {
     const redis = getRedis();
-    const keys = await redis.keys('ocm:*');
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
+    let cursor = '0';
+    do {
+      const [next, keys] = await redis.scan(cursor, 'MATCH', 'ocm:*', 'COUNT', 100);
+      cursor = next;
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } while (cursor !== '0');
   } catch { /* Redis may not be available yet */ }
 
   console.log('[store] Initialized (DB-first mode)');
@@ -181,15 +185,26 @@ export const store = {
     );
 
     const redis = getRedis();
+    const instances = rows.map(row => rowToInstance(row));
+
+    // Batch Redis lookups with mget instead of N individual GET calls
+    if (instances.length > 0) {
+      const statusKeys = instances.map(i => `ocm:instance:status:${i.id}`);
+      const taskKeys = instances.map(i => `ocm:instance:currentTask:${i.id}`);
+      const [statuses, tasks] = await Promise.all([
+        redis.mget(...statusKeys),
+        redis.mget(...taskKeys),
+      ]);
+      for (let idx = 0; idx < instances.length; idx++) {
+        if (statuses[idx]) instances[idx].status = statuses[idx] as Instance['status'];
+        if (tasks[idx]) instances[idx].currentTask = JSON.parse(tasks[idx]!);
+      }
+    }
+
     const result: InstancePublic[] = [];
-    for (const row of rows) {
-      const inst = rowToInstance(row);
-      const statusStr = await redis.get(`ocm:instance:status:${inst.id}`);
-      if (statusStr) inst.status = statusStr as Instance['status'];
-
-      const currentTaskStr = await redis.get(`ocm:instance:currentTask:${inst.id}`);
-      if (currentTaskStr) inst.currentTask = JSON.parse(currentTaskStr);
-
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      const inst = instances[idx];
       const role = row.r_id ? rowToRole({ id: row.r_id, name: row.r_name, description: row.r_desc, capabilities: row.r_caps, is_lead: row.r_is_lead }) : undefined;
       result.push(toPublic(inst, role));
     }
@@ -461,14 +476,18 @@ export const store = {
   async getAllInstancesRaw(): Promise<Instance[]> {
     const pool = getPool();
     const { rows } = await pool.query('SELECT * FROM instances');
-    const redis = getRedis();
-    const instances: Instance[] = [];
-    for (const row of rows) {
-      const inst = rowToInstance(row);
-      const statusStr = await redis.get(`ocm:instance:status:${inst.id}`);
-      if (statusStr) inst.status = statusStr as Instance['status'];
-      instances.push(inst);
+    const instances = rows.map(row => rowToInstance(row));
+
+    // Batch Redis lookups with mget instead of N individual GET calls
+    if (instances.length > 0) {
+      const redis = getRedis();
+      const statusKeys = instances.map(i => `ocm:instance:status:${i.id}`);
+      const statuses = await redis.mget(...statusKeys);
+      for (let idx = 0; idx < instances.length; idx++) {
+        if (statuses[idx]) instances[idx].status = statuses[idx] as Instance['status'];
+      }
     }
+
     return instances;
   },
 
@@ -495,17 +514,21 @@ export const store = {
 
   async buildTeamPublic(team: Team): Promise<TeamPublic> {
     const pool = getPool();
-    const { rows: roleRows } = await pool.query('SELECT * FROM roles WHERE team_id = $1 ORDER BY created_at ASC', [team.id]);
-    const roles = roleRows.map(rowToRole);
-
-    // Build members from instance bindings
-    const { rows: instanceRows } = await pool.query(
-      'SELECT id, role_id FROM instances WHERE team_id = $1 AND role_id IS NOT NULL',
+    // Single JOIN query instead of 2 separate queries (roles + instances)
+    const { rows } = await pool.query(
+      `SELECT r.*, i.id AS bound_instance_id
+       FROM roles r
+       LEFT JOIN instances i ON i.team_id = r.team_id AND i.role_id = r.id
+       WHERE r.team_id = $1
+       ORDER BY r.created_at ASC`,
       [team.id]
     );
+    const roles = rows.map(rowToRole);
     const instanceByRole = new Map<string, string>();
-    for (const row of instanceRows) {
-      instanceByRole.set(row.role_id, row.id);
+    for (const row of rows) {
+      if (row.bound_instance_id) {
+        instanceByRole.set(row.id, row.bound_instance_id);
+      }
     }
 
     team.members = roles.map(r => ({
