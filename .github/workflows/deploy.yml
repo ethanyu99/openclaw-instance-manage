@@ -13,6 +13,8 @@ jobs:
     name: Deploy to Railway
     runs-on: ubuntu-latest
     environment: production
+    # Only run if Railway token is configured
+    if: vars.RAILWAY_SERVICE_ID != '' && secrets.RAILWAY_TOKEN != ''
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +27,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Health check
+        if: vars.PRODUCTION_URL != ''
         run: |
           echo "等待部署生效..."
           sleep 30
@@ -41,7 +44,7 @@ jobs:
           exit 1
 
       - name: Notify on failure
-        if: failure()
+        if: failure() && secrets.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK }}
