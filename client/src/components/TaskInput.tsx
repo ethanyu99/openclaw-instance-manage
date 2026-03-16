@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Send, X, RotateCcw, Layers, ImagePlus, Loader2, Users, Settings2 } from 'lucide-react';
+import { Send, X, RotateCcw, Layers, ImagePlus, Loader2, Users, Settings2, MessageSquare } from 'lucide-react';
 import type { InstancePublic, TeamPublic, ExecutionConfig } from '@shared/types';
 import { uploadFiles } from '@/lib/api';
+import { useInstanceStore } from '@/stores/instanceStore';
 
 interface TaskInputProps {
   instances: InstancePublic[];
@@ -44,6 +45,7 @@ function isTeamOption(item: SuggestionItem): item is TeamOption {
 }
 
 export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, shareMode = false }: TaskInputProps) {
+  const activeSessions = useInstanceStore(s => s.activeSessions);
   const [value, setValue] = useState('');
   const [targetInstances, setTargetInstances] = useState<InstancePublic[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<TeamPublic | null>(null);
@@ -451,6 +453,14 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
                 Config
               </Button>
             )}
+          </div>
+        )}
+
+        {/* Active session hint */}
+        {targetInstances.length === 1 && !pendingNewSession && activeSessions[targetInstances[0].id] && (
+          <div className="flex items-center gap-1.5 px-3 pb-1 text-[11px] text-muted-foreground">
+            <MessageSquare className="h-3 w-3 shrink-0" />
+            <span>Continuing: <span className="font-medium text-foreground/70">{activeSessions[targetInstances[0].id].topic || 'Previous session'}</span></span>
           </div>
         )}
 

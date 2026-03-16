@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { InstancePublic, InstanceStats, WSMessage } from '@shared/types';
-import { fetchInstances } from '@/lib/api';
+import { fetchInstances, fetchActiveSessions } from '@/lib/api';
+import type { ActiveSessionInfo } from '@/lib/api';
 
 interface PendingExchange {
   instanceId: string;
@@ -13,8 +14,10 @@ interface InstanceState {
   instances: InstancePublic[];
   taskStreams: Record<string, string>;
   stats: InstanceStats;
+  activeSessions: Record<string, ActiveSessionInfo>;
 
   loadInstances: () => Promise<void>;
+  loadActiveSessions: () => Promise<void>;
   handleWSMessage: (msg: WSMessage) => void;
 
   _notifyFn: ((title: string, body: string) => void) | null;
@@ -43,6 +46,7 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
   instances: [],
   taskStreams: {},
   stats: { total: 0, online: 0, busy: 0, offline: 0 },
+  activeSessions: {},
   _notifyFn: null,
   _taskContentRef: {},
   _pendingExchanges: {},
@@ -57,6 +61,15 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
       set(setInstancesAndStats(data.instances));
     } catch (err) {
       console.warn('Failed to load instances:', err);
+    }
+  },
+
+  loadActiveSessions: async () => {
+    try {
+      const { activeSessions } = await fetchActiveSessions();
+      set({ activeSessions });
+    } catch (err) {
+      console.warn('Failed to load active sessions:', err);
     }
   },
 

@@ -6,8 +6,54 @@ import {
   clearSessionsForOwner,
   updateSessionTopic,
 } from '../persistence';
+import { getRedis } from '../redis';
+import { getPool } from '../db';
+import { store } from '../store';
 
 export const sessionRouter = Router();
+
+sessionRouter.get('/active', async (req, res) => {
+  const ownerId = req.userContext!.userId;
+  try {
+    const instances = await store.getInstances(ownerId);
+    const redis = getRedis();
+
+    // Batch get all session keys from Redis
+    const redisKeys = instances.map(i => `ocm:session:${ownerId}:${i.id}`);
+    const sessionKeys = redisKeys.length > 0 ? await redis.mget(...redisKeys) : [];
+
+    // Get topics from DB for all non-null session keys
+    const validKeys = sessionKeys.filter(Boolean) as string[];
+    let topicMap: Record<string, string> = {};
+    if (validKeys.length > 0) {
+      const pool = getPool();
+      const placeholders = validKeys.map((_, i) => `$${i + 1}`).join(',');
+      const { rows } = await pool.query(
+        `SELECT id, topic FROM sessions WHERE id IN (${placeholders})`,
+        validKeys
+      );
+      for (const row of rows) {
+        if (row.topic) topicMap[row.id] = row.topic;
+      }
+    }
+
+    const activeSessions: Record<string, { sessionKey: string; topic?: string }> = {};
+    for (let i = 0; i < instances.length; i++) {
+      const key = sessionKeys[i];
+      if (key) {
+        activeSessions[instances[i].id] = {
+          sessionKey: key,
+          topic: topicMap[key] || undefined,
+        };
+      }
+    }
+
+    res.json({ activeSessions });
+  } catch (err) {
+    console.error('[sessions] Failed to load active sessions:', err);
+    res.status(500).json({ error: 'Failed to load active sessions' });
+  }
+});
 
 sessionRouter.get('/', async (req, res) => {
   const ownerId = req.userContext!.userId;

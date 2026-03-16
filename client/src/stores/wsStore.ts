@@ -61,6 +61,7 @@ export const useWSStore = create<WSState>((set, get) => ({
       ws.onopen = () => {
         set({ connected: true });
         useInstanceStore.getState().loadInstances();
+        useInstanceStore.getState().loadActiveSessions();
       };
 
       ws.onclose = () => {
@@ -75,6 +76,7 @@ export const useWSStore = create<WSState>((set, get) => ({
     };
 
     useInstanceStore.getState().loadInstances();
+    useInstanceStore.getState().loadActiveSessions();
     useExecutionStore.getState().loadExecutions();
     connect();
 

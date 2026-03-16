@@ -37,6 +37,7 @@ const statusBadgeVariant: Record<string, 'default' | 'secondary' | 'destructive'
 export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
   // Subscribe to this instance's stream only (avoids re-render on other instances' streams)
   const taskStream = useInstanceStore(s => s.taskStreams[instance.id]);
+  const activeSession = useInstanceStore(s => s.activeSessions[instance.id]);
   const cancelTask = useWSStore(s => s.cancelTask);
   const [detailOpen, setDetailOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -215,6 +216,14 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
                 <MessageSquare className="h-3 w-3 text-violet-500 shrink-0" />
                 <span className="text-[11px] text-violet-700 dark:text-violet-400 truncate">
                   {instance.currentTask.content?.slice(0, 60) || instance.currentTask.sessionKey.slice(0, 20)}
+                </span>
+              </div>
+            )}
+            {!instance.currentTask && activeSession && (
+              <div className="flex items-center gap-1.5 mt-0.5 px-2 py-1.5 rounded-md bg-muted/30 border border-border/30 min-w-0 overflow-hidden">
+                <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
+                <span className="text-[11px] text-muted-foreground truncate">
+                  Session: <span className="font-medium text-foreground/70">{activeSession.topic || 'Active session'}</span>
                 </span>
               </div>
             )}

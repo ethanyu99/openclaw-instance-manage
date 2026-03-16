@@ -1,6 +1,11 @@
 import type { SessionRecord, SessionDetail } from '@shared/types';
 import { apiFetch } from './client';
 
+export interface ActiveSessionInfo {
+  sessionKey: string;
+  topic?: string;
+}
+
 export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
   return apiFetch('/sessions');
 }
@@ -26,4 +31,8 @@ export async function updateSessionTopic(sessionKey: string, topic: string): Pro
     method: 'PATCH',
     body: JSON.stringify({ topic }),
   });
+}
+
+export async function fetchActiveSessions(): Promise<{ activeSessions: Record<string, ActiveSessionInfo> }> {
+  return apiFetch('/sessions/active');
 }
