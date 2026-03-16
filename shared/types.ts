@@ -151,6 +151,7 @@ export interface Turn {
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
+  tokenUsage?: { prompt: number; completion: number };
 }
 
 export interface DelegateAction {

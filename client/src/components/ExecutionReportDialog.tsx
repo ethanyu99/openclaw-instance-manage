@@ -132,6 +132,11 @@ function TurnCard({ turn, defaultExpanded }: { turn: ExecutionTurnRecord; defaul
               {formatDuration(turn.durationMs)}
             </span>
           )}
+          {turn.tokenUsage && (turn.tokenUsage.prompt > 0 || turn.tokenUsage.completion > 0) && (
+            <span className="text-[10px] text-muted-foreground/70 font-mono">
+              {(turn.tokenUsage.prompt + turn.tokenUsage.completion).toLocaleString()}t
+            </span>
+          )}
           <Badge
             variant={turn.status === 'completed' ? 'secondary' : turn.status === 'failed' ? 'destructive' : 'outline'}
             className="text-[10px] shrink-0"
@@ -270,6 +275,9 @@ export function ExecutionReportDialog({ execution, open, onOpenChange }: Executi
                 )}
                 {execution.metrics.avgTurnDurationMs > 0 && (
                   <span>平均 {formatDuration(execution.metrics.avgTurnDurationMs)}/轮</span>
+                )}
+                {(execution.metrics.tokenUsage.prompt > 0 || execution.metrics.tokenUsage.completion > 0) && (
+                  <span>Tokens: {(execution.metrics.tokenUsage.prompt + execution.metrics.tokenUsage.completion).toLocaleString()} ({execution.metrics.tokenUsage.prompt.toLocaleString()} in / {execution.metrics.tokenUsage.completion.toLocaleString()} out)</span>
                 )}
               </div>
             )}

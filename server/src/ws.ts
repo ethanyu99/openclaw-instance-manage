@@ -349,9 +349,17 @@ async function handleSSEEvent(
       await store.updateTask(taskId, { status: 'completed', summary: summaryForTask });
       await store.updateTaskOutput(taskId, fullOutput);
       await store.updateInstance(instanceId, { status: 'online' });
+
+      // Extract token usage from response
+      const usage = output?.usage as Record<string, number> | undefined;
+      const tokenUsage = usage ? {
+        prompt: usage.input_tokens || usage.prompt_tokens || 0,
+        completion: usage.output_tokens || usage.completion_tokens || 0,
+      } : undefined;
+
       broadcastToOwner(ownerId, {
         type: 'task:complete',
-        payload: { taskId, status: 'completed', summary: summaryForTask },
+        payload: { taskId, status: 'completed', summary: summaryForTask, tokenUsage },
         instanceId,
         taskId,
         sessionKey,

@@ -390,7 +390,7 @@ async function callInstanceRaw(
   executionId: string,
   turn: Turn,
   sessionKey: string,
-): Promise<string> {
+): Promise<{ text: string; usage: { prompt: number; completion: number } }> {
   const baseUrl = toHttpBase(instance.endpoint);
   const url = `${baseUrl}/v1/responses`;
 
@@ -421,6 +421,7 @@ async function callInstanceRaw(
   });
 
   let fullText = '';
+  let tokenUsage = { prompt: 0, completion: 0 };
   const controller = new AbortController();
   registerAbortController(executionId, controller);
 
@@ -493,6 +494,14 @@ async function callInstanceRaw(
               }
               if (text) fullText = text;
             }
+            // Extract token usage
+            const usage = output?.usage as Record<string, number> | undefined;
+            if (usage) {
+              tokenUsage = {
+                prompt: usage.input_tokens || usage.prompt_tokens || 0,
+                completion: usage.output_tokens || usage.completion_tokens || 0,
+              };
+            }
           }
         } catch {
           // skip
@@ -519,7 +528,7 @@ async function callInstanceRaw(
     });
   }
 
-  return fullText;
+  return { text: fullText, usage: tokenUsage };
 }
 
 /**
@@ -536,10 +545,10 @@ async function callInstance(
   turn: Turn,
   sessionKey: string,
   teamId?: string,
-): Promise<string> {
+): Promise<{ text: string; usage: { prompt: number; completion: number } }> {
   const result = await callInstanceRaw(instance, content, ownerId, broadcastToOwner, executionId, turn, sessionKey);
 
-  if (result.trim().length > 0) {
+  if (result.text.trim().length > 0) {
     return result;
   }
 
@@ -568,7 +577,7 @@ async function callInstance(
 
   const retryResult = await callInstanceRaw(instance, content, ownerId, broadcastToOwner, executionId, turn, newSessionKey);
 
-  if (retryResult.trim().length > 0) {
+  if (retryResult.text.trim().length > 0) {
     return retryResult;
   }
 
@@ -613,11 +622,17 @@ function computeMetrics(execution: Execution): ExecutionMetrics {
   const turnsByRole: Record<string, number> = {};
   let feedbackCycles = 0;
   let maxDepth = 0;
+  let totalPrompt = 0;
+  let totalCompletion = 0;
 
   for (const t of completed) {
     turnsByRole[t.role] = (turnsByRole[t.role] || 0) + 1;
     if (t.depth > maxDepth) maxDepth = t.depth;
     if (t.action?.type === 'feedback') feedbackCycles++;
+    if (t.tokenUsage) {
+      totalPrompt += t.tokenUsage.prompt;
+      totalCompletion += t.tokenUsage.completion;
+    }
   }
 
   const totalDuration = execution.completedAt
@@ -636,7 +651,7 @@ function computeMetrics(execution: Execution): ExecutionMetrics {
     maxDepthReached: maxDepth,
     feedbackCycles,
     avgTurnDurationMs,
-    tokenUsage: { prompt: 0, completion: 0 },
+    tokenUsage: { prompt: totalPrompt, completion: totalCompletion },
   };
 }
 
@@ -940,7 +955,9 @@ export async function dispatchToTeam(
 
       await store.markUsedByTeam(ownerId, inst.id);
       const sessionKey = await store.getTeamSessionKey(ownerId, teamId, inst.id);
-      output = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn, sessionKey, teamId);
+      const callResult = await callInstance(inst, prompt, ownerId, broadcastToOwner, execution.id, turn, sessionKey, teamId);
+      output = callResult.text;
+      turn.tokenUsage = callResult.usage;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
       const isCancelAbort = cancelledExecutions.get(execution.id) || errMsg === 'This operation was aborted';

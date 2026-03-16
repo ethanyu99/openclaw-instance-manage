@@ -24,6 +24,7 @@ export interface ExecutionTurnRecord {
   durationMs?: number;
   startedAt?: string;
   completedAt?: string;
+  tokenUsage?: { prompt: number; completion: number };
 }
 
 export interface ExecutionEdgeRecord {
