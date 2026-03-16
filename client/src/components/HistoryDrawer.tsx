@@ -194,10 +194,17 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                                   </Button>
                                 </div>
                               </div>
-                              <p className="text-[11px] truncate text-muted-foreground font-mono">
-                                <span className="text-blue-500 mr-1.5">❯</span>
-                                {session.sessionKey.slice(0, 30)}
-                              </p>
+                              {session.topic ? (
+                                <p className="text-[11px] truncate text-foreground/70">
+                                  <span className="text-blue-500 mr-1.5">❯</span>
+                                  {session.topic}
+                                </p>
+                              ) : (
+                                <p className="text-[11px] truncate text-muted-foreground font-mono">
+                                  <span className="text-blue-500 mr-1.5">❯</span>
+                                  {session.sessionKey.slice(0, 30)}
+                                </p>
+                              )}
                             </div>
                         ))}
                       </div>

@@ -8,10 +8,12 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Pencil, Check, X, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { SessionRecord, SessionDetail, SessionExchangeRecord } from '@shared/types';
-import { fetchSessionDetail } from '@/lib/api';
+import { fetchSessionDetail, updateSessionTopic } from '@/lib/api';
 
 interface SessionDetailDialogProps {
   session: SessionRecord | null;
@@ -75,6 +77,10 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream, f
   const lastStreamContentRef = useRef<string>('');
   const refetchAfterCompleteRef = useRef(false);
 
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [topicDraft, setTopicDraft] = useState('');
+  const [topicValue, setTopicValue] = useState<string | undefined>(undefined);
+
   const sessionKey = session?.sessionKey;
   const doFetch = fetchDetail ?? fetchSessionDetail;
 
@@ -82,13 +88,18 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream, f
     if (open && sessionKey) {
       setLoading(true);
       refetchAfterCompleteRef.current = false;
+      setEditingTopic(false);
       doFetch(sessionKey)
-        .then(setDetail)
+        .then((d) => {
+          setDetail(d);
+          setTopicValue(d?.topic);
+        })
         .catch(() => setDetail(null))
         .finally(() => setLoading(false));
     } else {
       setDetail(null);
       lastStreamContentRef.current = '';
+      setTopicValue(undefined);
     }
   }, [open, sessionKey]);
 
@@ -112,6 +123,22 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream, f
   if (!session) return null;
 
   const exchanges: SessionExchangeRecord[] = detail?.exchanges || [];
+  const displayTopic = topicValue ?? session.topic;
+
+  const handleTopicSave = async () => {
+    if (!sessionKey) return;
+    try {
+      await updateSessionTopic(sessionKey, topicDraft.trim());
+      setTopicValue(topicDraft.trim());
+      setEditingTopic(false);
+    } catch {
+      // silently fail
+    }
+  };
+
+  const handleTopicCancel = () => {
+    setEditingTopic(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -125,6 +152,57 @@ export function SessionDetailDialog({ session, open, onOpenChange, taskStream, f
               {session.instanceName}
             </Badge>
           </div>
+          {editingTopic ? (
+            <div className="flex items-center gap-2 mt-1.5">
+              <Input
+                value={topicDraft}
+                onChange={(e) => setTopicDraft(e.target.value)}
+                className="h-7 text-xs font-mono flex-1"
+                placeholder="Session topic..."
+                maxLength={500}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleTopicSave();
+                  if (e.key === 'Escape') handleTopicCancel();
+                }}
+              />
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-muted text-emerald-600"
+                onClick={handleTopicSave}
+              >
+                <Check className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-muted text-muted-foreground"
+                onClick={handleTopicCancel}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-1.5 group">
+              {displayTopic ? (
+                <span className="text-xs text-foreground/80 flex items-center gap-1.5">
+                  <MessageSquare className="h-3 w-3 text-blue-500 shrink-0" />
+                  {displayTopic}
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground/60 italic">No topic</span>
+              )}
+              <button
+                type="button"
+                className="p-0.5 rounded hover:bg-muted text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => {
+                  setTopicDraft(displayTopic || '');
+                  setEditingTopic(true);
+                }}
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           <DialogDescription className="text-xs font-mono mt-1.5">
             <span className="text-muted-foreground">Total records: {exchanges.length}</span>
             <span className="mx-2 opacity-50">|</span>

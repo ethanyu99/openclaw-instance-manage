@@ -20,3 +20,10 @@ export async function deleteSessionApi(sessionKey: string): Promise<void> {
 export async function clearSessionsApi(): Promise<void> {
   return apiFetch('/sessions', { method: 'DELETE' });
 }
+
+export async function updateSessionTopic(sessionKey: string, topic: string): Promise<void> {
+  return apiFetch(`/sessions/${encodeURIComponent(sessionKey)}/topic`, {
+    method: 'PATCH',
+    body: JSON.stringify({ topic }),
+  });
+}

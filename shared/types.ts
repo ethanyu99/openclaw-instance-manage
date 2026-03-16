@@ -374,6 +374,7 @@ export interface SessionRecord {
   ownerId: string;
   instanceId: string;
   instanceName: string;
+  topic?: string;
   createdAt: string;
   updatedAt: string;
 }

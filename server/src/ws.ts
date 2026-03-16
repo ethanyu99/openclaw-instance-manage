@@ -185,7 +185,7 @@ async function dispatchToInstance(ownerId: string, instanceId: string, taskId: s
 
   const sessionUser = await store.getSessionKey(ownerId, instanceId);
 
-  await store.ensureSession(ownerId, instanceId, instance.name, sessionUser);
+  await store.ensureSession(ownerId, instanceId, instance.name, sessionUser, content);
 
   await store.updateInstance(instanceId, { status: 'busy' });
   await store.updateTask(taskId, { status: 'running' });

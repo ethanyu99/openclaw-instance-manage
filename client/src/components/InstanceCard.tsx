@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, Package, FolderOpen } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, Package, FolderOpen, MessageSquare } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -208,6 +208,14 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
                   <span className="truncate">Web UI: {instance.endpoint}?token={instance.token.substring(0, 8)}...</span>
                   <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>
+              </div>
+            )}
+            {instance.currentTask?.sessionKey && (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-violet-50/50 dark:bg-violet-950/20 border border-violet-200/50 dark:border-violet-800/30 min-w-0 overflow-hidden">
+                <MessageSquare className="h-3 w-3 text-violet-500 shrink-0" />
+                <span className="text-[11px] text-violet-700 dark:text-violet-400 truncate">
+                  {instance.currentTask.content?.slice(0, 60) || instance.currentTask.sessionKey.slice(0, 20)}
+                </span>
               </div>
             )}
           </div>

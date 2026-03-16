@@ -17,6 +17,7 @@ import {
   cleanExpiredShareTokens as cleanExpiredShareTokensDB,
   saveSession,
   updateTaskOutput as updateTaskOutputDB,
+  autoSetSessionTopic,
 } from './persistence';
 import type { SessionRecord } from '../../shared/types';
 
@@ -809,16 +810,21 @@ export const store = {
 
   // ── Session persistence ─────────
 
-  async ensureSession(ownerId: string, instanceId: string, instanceName: string, sessionKey: string): Promise<void> {
+  async ensureSession(ownerId: string, instanceId: string, instanceName: string, sessionKey: string, taskContent?: string): Promise<void> {
     const session: SessionRecord = {
       sessionKey,
       ownerId,
       instanceId,
       instanceName,
+      topic: taskContent ? taskContent.slice(0, 100) : undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     await saveSession(session);
+    // Auto-set topic from first message if not already set
+    if (taskContent) {
+      await autoSetSessionTopic(sessionKey, taskContent);
+    }
   },
 
   async updateTaskOutput(taskId: string, output: string): Promise<void> {

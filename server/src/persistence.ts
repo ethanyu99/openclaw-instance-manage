@@ -262,12 +262,13 @@ export async function cleanExpiredShareTokens(): Promise<number> {
 export async function saveSession(session: SessionRecord): Promise<void> {
   const pool = getPool();
   await pool.query(
-    `INSERT INTO sessions (id, owner_id, instance_id, instance_name, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO sessions (id, owner_id, instance_id, instance_name, topic, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (id) DO UPDATE SET
        instance_name = EXCLUDED.instance_name,
+       topic = COALESCE(sessions.topic, EXCLUDED.topic),
        updated_at = EXCLUDED.updated_at`,
-    [session.sessionKey, session.ownerId, session.instanceId, session.instanceName, session.createdAt, session.updatedAt]
+    [session.sessionKey, session.ownerId, session.instanceId, session.instanceName, session.topic || null, session.createdAt, session.updatedAt]
   );
 }
 
@@ -282,6 +283,7 @@ export async function loadSessionsByOwner(ownerId: string): Promise<SessionRecor
     ownerId: row.owner_id,
     instanceId: row.instance_id,
     instanceName: row.instance_name,
+    topic: row.topic || undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   }));
@@ -317,6 +319,7 @@ export async function loadSessionDetail(ownerId: string, sessionKey: string): Pr
     ownerId: row.owner_id,
     instanceId: row.instance_id,
     instanceName: row.instance_name,
+    topic: row.topic || undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     exchanges,
@@ -337,6 +340,25 @@ export async function clearSessionsForOwner(ownerId: string): Promise<void> {
     [ownerId]
   );
   await pool.query('DELETE FROM sessions WHERE owner_id = $1', [ownerId]);
+}
+
+export async function updateSessionTopic(ownerId: string, sessionKey: string, topic: string): Promise<boolean> {
+  const pool = getPool();
+  const result = await pool.query(
+    'UPDATE sessions SET topic = $1, updated_at = NOW() WHERE id = $2 AND owner_id = $3',
+    [topic, sessionKey, ownerId]
+  );
+  return (result.rowCount || 0) > 0;
+}
+
+export async function autoSetSessionTopic(sessionKey: string, firstMessage: string): Promise<void> {
+  const pool = getPool();
+  // Only set topic if it's currently null (don't override manual edits)
+  const truncated = firstMessage.slice(0, 100);
+  await pool.query(
+    'UPDATE sessions SET topic = $1 WHERE id = $2 AND topic IS NULL',
+    [truncated, sessionKey]
+  );
 }
 
 export async function updateTaskOutput(taskId: string, output: string): Promise<void> {
