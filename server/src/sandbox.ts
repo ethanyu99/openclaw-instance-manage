@@ -89,18 +89,6 @@ function generateOpenClawConfig(apiKey: string, gatewayToken: string): Record<st
   return config;
 }
 
-const DEVICE_AUTO_APPROVE_SCRIPT = `#!/bin/bash
-export OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH}"
-while true; do
-  openclaw devices list --json 2>/dev/null \\
-    | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{JSON.parse(d).pending.forEach(p=>console.log(p.requestId))}catch(e){}})' \\
-    | while read -r rid; do
-        openclaw devices approve "$rid" 2>/dev/null
-      done
-  sleep 2
-done
-`;
-
 export interface SandboxCreateResult {
   sandboxId: string;
   endpoint: string;
@@ -184,17 +172,11 @@ export async function createSandbox(
     emit({ step: 'gateway_ready', message: 'Gateway is ready' });
 
     emit({ step: 'starting_daemon', message: 'Starting device auto-approve daemon...' });
-    await sandbox.files.write('/tmp/device-auto-approve.sh', DEVICE_AUTO_APPROVE_SCRIPT);
-    await sandbox.commands.run(
-      'nohup bash /tmp/device-auto-approve.sh > /tmp/device-auto-approve.log 2>&1 &',
-      { timeoutMs: 30_000 },
-    );
-    emit({ step: 'daemon_started', message: 'Device auto-approve daemon started' });
 
     const host = sandbox.getHost(GATEWAY_PORT);
     const endpoint = `https://${host}`;
     emit({ step: 'sandbox_ready', message: `Sandbox ready — endpoint: ${endpoint}` });
-    console.log('[sandbox] WebUI:', `${endpoint}?token=${gwToken}`);
+    console.log('[sandbox] WebUI:', `${endpoint}#token=${gwToken}`);
 
     return { sandboxId, endpoint, gatewayToken: gwToken };
   } catch (err) {

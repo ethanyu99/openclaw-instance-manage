@@ -204,7 +204,7 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
             </div>
             {instance.endpoint && instance.token && (
               <div className="font-mono text-xs text-blue-600/80 bg-blue-50/50 px-2 py-1.5 rounded-md border border-blue-200/50 min-w-0 overflow-hidden flex items-center">
-                <a href={`${instance.endpoint?.replace(/^ws/, 'http') || ''}?token=${instance.token}`} target="_blank" rel="noreferrer" className="hover:text-blue-600 hover:underline flex items-center gap-1.5 min-w-0 w-full">
+                <a href={`${instance.endpoint?.replace(/^ws/, 'http') || ''}#token=${instance.token}`} target="_blank" rel="noreferrer" className="hover:text-blue-600 hover:underline flex items-center gap-1.5 min-w-0 w-full">
                   <span className="truncate">Web UI: {instance.endpoint}?token={instance.token.substring(0, 8)}...</span>
                   <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>

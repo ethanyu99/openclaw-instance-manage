@@ -31,7 +31,7 @@ const app = express();
 const server = http.createServer(app);
 const PORT = parseInt(process.env.PORT || '3002', 10);
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5174')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
