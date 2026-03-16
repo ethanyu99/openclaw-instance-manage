@@ -5,10 +5,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Folder, FolderOpen, FileText, FileCode, FileImage, File,
   ChevronRight, ChevronDown, RefreshCw, Eye, EyeOff,
-  Home, Loader2, AlertCircle, X, Copy, Check,
+  Home, Loader2, AlertCircle, X, Copy, Check, Download, FolderArchive,
 } from 'lucide-react';
 import type { InstancePublic, SandboxFileEntry } from '@shared/types';
-import { listSandboxFiles, readSandboxFile } from '@/lib/api';
+import { listSandboxFiles, readSandboxFile, downloadSandboxFile, downloadSandboxArchive } from '@/lib/api';
 
 interface FileBrowserDialogProps {
   instance: InstancePublic;
@@ -75,6 +75,8 @@ export function FileBrowserDialog({ instance, open, onOpenChange }: FileBrowserD
   const [fileLoading, setFileLoading] = useState(false);
   const [fileError, setFileError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [archiveDownloading, setArchiveDownloading] = useState(false);
 
   const treeRef = useRef(tree);
   treeRef.current = tree;
@@ -168,6 +170,29 @@ export function FileBrowserDialog({ instance, open, onOpenChange }: FileBrowserD
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [fileContent]);
+
+  const handleDownloadFile = useCallback(async () => {
+    if (!selectedFile) return;
+    setDownloading(true);
+    try {
+      await downloadSandboxFile(instance.id, selectedFile);
+    } catch (err) {
+      console.error('[FileBrowser] Download failed:', err);
+    } finally {
+      setDownloading(false);
+    }
+  }, [selectedFile, instance.id]);
+
+  const handleDownloadArchive = useCallback(async () => {
+    setArchiveDownloading(true);
+    try {
+      await downloadSandboxArchive(instance.id, ROOT_PATH);
+    } catch (err) {
+      console.error('[FileBrowser] Archive download failed:', err);
+    } finally {
+      setArchiveDownloading(false);
+    }
+  }, [instance.id]);
 
   const handleFileSelect = useCallback(async (filePath: string) => {
     setSelectedFile(filePath);
@@ -276,6 +301,18 @@ export function FileBrowserDialog({ instance, open, onOpenChange }: FileBrowserD
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-7 w-7"
+                onClick={handleDownloadArchive}
+                disabled={archiveDownloading}
+                title="Download workspace as tar.gz"
+              >
+                {archiveDownloading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <FolderArchive className="h-3.5 w-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-7 w-7 opacity-70 hover:opacity-100"
                 onClick={() => onOpenChange(false)}
                 title="Close"
@@ -343,6 +380,18 @@ export function FileBrowserDialog({ instance, open, onOpenChange }: FileBrowserD
                         {copied
                           ? <Check className="h-3 w-3 text-emerald-500" />
                           : <Copy className="h-3 w-3 text-muted-foreground" />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={handleDownloadFile}
+                        disabled={downloading}
+                        title="Download file"
+                      >
+                        {downloading
+                          ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          : <Download className="h-3 w-3 text-muted-foreground" />}
                       </Button>
                     </div>
                   )}

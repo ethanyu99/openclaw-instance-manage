@@ -1,3 +1,4 @@
+import path from 'path';
 import { Router } from 'express';
 import { Sandbox } from 'novita-sandbox';
 import { store } from '../store';
@@ -9,6 +10,7 @@ const SANDBOX_KEEP_ALIVE_MS = 50 * 365 * 24 * 3600 * 1000;
 const ALLOWED_ROOT = '/home/user';
 const DEFAULT_ROOT = '/home/user/.openclaw/workspace';
 const MAX_READ_SIZE = 2 * 1024 * 1024;
+const MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024; // 50 MB
 
 async function connectSandbox(sandboxId: string, apiKey: string) {
   return Sandbox.connect(sandboxId, {
@@ -98,6 +100,96 @@ sandboxFilesRouter.get('/:id/sandbox/files/read', async (req, res) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to read file';
     console.error(`[sandbox-files] Read failed for ${instance.name}:`, msg);
+    res.status(500).json({ error: msg });
+  }
+});
+
+sandboxFilesRouter.get('/:id/sandbox/files/download', async (req, res) => {
+  const ownerId = req.userContext!.userId;
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
+  if (!instance) return res.status(404).json({ error: 'Instance not found' });
+  if (!instance.sandboxId || !instance.apiKey) {
+    return res.status(400).json({ error: 'Instance is not a sandbox instance' });
+  }
+
+  const filePath = req.query.path as string;
+  if (!filePath) return res.status(400).json({ error: 'path query parameter is required' });
+  if (!isPathAllowed(filePath)) {
+    return res.status(403).json({ error: 'Access denied: path outside allowed root' });
+  }
+
+  try {
+    const sandbox = await connectSandbox(instance.sandboxId, instance.apiKey);
+
+    const info = await sandbox.files.getInfo(filePath);
+    if (info.type === 'dir') {
+      return res.status(400).json({ error: 'Cannot download a directory — use the archive endpoint' });
+    }
+    if (info.size > MAX_DOWNLOAD_SIZE) {
+      return res.status(413).json({
+        error: `File too large to download (${(info.size / 1024 / 1024).toFixed(1)}MB). Max: ${MAX_DOWNLOAD_SIZE / 1024 / 1024}MB`,
+        size: info.size,
+      });
+    }
+
+    const bytes = await sandbox.files.read(filePath, { format: 'bytes' });
+    const filename = path.basename(filePath);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', bytes.length);
+    res.send(Buffer.from(bytes));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to download file';
+    console.error(`[sandbox-files] Download failed for ${instance.name}:`, msg);
+    res.status(500).json({ error: msg });
+  }
+});
+
+sandboxFilesRouter.get('/:id/sandbox/files/download-archive', async (req, res) => {
+  const ownerId = req.userContext!.userId;
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
+  if (!instance) return res.status(404).json({ error: 'Instance not found' });
+  if (!instance.sandboxId || !instance.apiKey) {
+    return res.status(400).json({ error: 'Instance is not a sandbox instance' });
+  }
+
+  const dirPath = (req.query.path as string) || DEFAULT_ROOT;
+  if (!isPathAllowed(dirPath)) {
+    return res.status(403).json({ error: 'Access denied: path outside allowed root' });
+  }
+
+  const archiveTmp = `/tmp/workspace-download-${Date.now()}.tar.gz`;
+
+  try {
+    const sandbox = await connectSandbox(instance.sandboxId, instance.apiKey);
+
+    // Build the archive inside the sandbox
+    const parentDir = path.dirname(dirPath);
+    const baseName = path.basename(dirPath);
+    await sandbox.commands.run(
+      `tar czf ${archiveTmp} -C ${parentDir} ${baseName}`,
+      { timeoutMs: 120_000 },
+    );
+
+    const bytes = await sandbox.files.read(archiveTmp, { format: 'bytes' });
+
+    // Clean up tmp file (best-effort, don't await or block response)
+    sandbox.commands.run(`rm -f ${archiveTmp}`, { timeoutMs: 15_000 }).catch(() => {});
+
+    const archiveName = `${baseName}-archive.tar.gz`;
+    res.setHeader('Content-Disposition', `attachment; filename="${archiveName}"`);
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Length', bytes.length);
+    res.send(Buffer.from(bytes));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to create archive';
+    console.error(`[sandbox-files] Archive download failed for ${instance.name}:`, msg);
+    // Best-effort cleanup on error
+    try {
+      const sandbox = await connectSandbox(instance.sandboxId, instance.apiKey);
+      await sandbox.commands.run(`rm -f ${archiveTmp}`, { timeoutMs: 10_000 });
+    } catch { /* ignore */ }
     res.status(500).json({ error: msg });
   }
 });

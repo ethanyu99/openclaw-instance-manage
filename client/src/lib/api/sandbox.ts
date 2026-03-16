@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch, authHeaders, API_BASE } from './client';
 
 export interface GitConfigPayload {
   pat: string;
@@ -97,4 +97,38 @@ export async function listSandboxFiles(
 export async function readSandboxFile(instanceId: string, filePath: string): Promise<SandboxFileReadResult> {
   const params = new URLSearchParams({ path: filePath });
   return apiFetch(`/instances/${instanceId}/sandbox/files/read?${params}`);
+}
+
+async function triggerBlobDownload(url: string, filename: string): Promise<void> {
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    let msg = `Download failed: ${res.statusText}`;
+    try { const body = await res.json(); msg = body.error || msg; } catch { /* not JSON */ }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadSandboxFile(instanceId: string, filePath: string): Promise<void> {
+  const params = new URLSearchParams({ path: filePath });
+  const filename = filePath.split('/').pop() || 'download';
+  const url = `${API_BASE}/instances/${instanceId}/sandbox/files/download?${params}`;
+  return triggerBlobDownload(url, filename);
+}
+
+export async function downloadSandboxArchive(instanceId: string, dirPath?: string): Promise<void> {
+  const params = new URLSearchParams();
+  if (dirPath) params.set('path', dirPath);
+  const baseName = (dirPath || 'workspace').split('/').pop() || 'workspace';
+  const filename = `${baseName}-archive.tar.gz`;
+  const url = `${API_BASE}/instances/${instanceId}/sandbox/files/download-archive?${params}`;
+  return triggerBlobDownload(url, filename);
 }
