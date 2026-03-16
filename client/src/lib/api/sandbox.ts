@@ -1,11 +1,14 @@
 import { apiFetch, authHeaders, API_BASE } from './client';
 
 export interface GitConfigPayload {
-  pat: string;
+  pat?: string;
   username?: string;
   gitName?: string;
   gitEmail?: string;
   host?: string;
+  authMethod?: 'pat' | 'ssh';
+  sshPrivateKey?: string;
+  sshPublicKey?: string;
 }
 
 export interface GitConfigResult {
@@ -17,6 +20,7 @@ export interface GitConfigResult {
 
 export interface GitStatusResult {
   hasCredentials: boolean;
+  hasSshKeys?: boolean;
   gitName: string;
   gitEmail: string;
 }
@@ -43,6 +47,7 @@ export interface TeamRoleGitStatus {
   instanceName: string | null;
   isSandbox: boolean;
   hasCredentials: boolean | null;
+  hasSshKeys?: boolean | null;
   gitName: string;
   gitEmail: string;
   reason: 'unbound' | 'not_found' | 'no_endpoint' | 'connection_failed' | null;

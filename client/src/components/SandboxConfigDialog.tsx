@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { GitBranch, CheckCircle2, XCircle, Loader2, ExternalLink, HelpCircle, Cloud, Server } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { GitBranch, CheckCircle2, XCircle, Loader2, ExternalLink, HelpCircle, Cloud, Server, Key } from 'lucide-react';
 import { configureSandboxGit, getSandboxGitStatus } from '@/lib/api';
 import type { InstancePublic } from '@shared/types';
 import type { GitStatusResult } from '@/lib/api';
@@ -21,11 +22,14 @@ interface InstanceConfigDialogProps {
 }
 
 export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceConfigDialogProps) {
+  const [authMethod, setAuthMethod] = useState<'pat' | 'ssh'>('pat');
   const [pat, setPat] = useState('');
   const [username, setUsername] = useState('');
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [host, setHost] = useState('github.com');
+  const [sshPrivateKey, setSshPrivateKey] = useState('');
+  const [sshPublicKey, setSshPublicKey] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -59,22 +63,39 @@ export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceCo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pat.trim()) return;
+
+    if (authMethod === 'pat' && !pat.trim()) return;
+    if (authMethod === 'ssh' && !sshPrivateKey.trim()) return;
 
     setLoading(true);
     setError('');
     setResult(null);
 
     try {
-      const res = await configureSandboxGit(instance.id, {
-        pat: pat.trim(),
-        username: username.trim() || undefined,
-        gitName: gitName.trim() || undefined,
-        gitEmail: gitEmail.trim() || undefined,
-        host: host.trim() || undefined,
-      });
-      setResult({ verified: res.verified, message: res.verifyMessage });
-      setPat('');
+      if (authMethod === 'ssh') {
+        const res = await configureSandboxGit(instance.id, {
+          authMethod: 'ssh',
+          sshPrivateKey: sshPrivateKey.trim(),
+          sshPublicKey: sshPublicKey.trim() || undefined,
+          gitName: gitName.trim() || undefined,
+          gitEmail: gitEmail.trim() || undefined,
+          host: host.trim() || undefined,
+        });
+        setResult({ verified: res.verified, message: res.verifyMessage });
+        setSshPrivateKey('');
+        setSshPublicKey('');
+      } else {
+        const res = await configureSandboxGit(instance.id, {
+          authMethod: 'pat',
+          pat: pat.trim(),
+          username: username.trim() || undefined,
+          gitName: gitName.trim() || undefined,
+          gitEmail: gitEmail.trim() || undefined,
+          host: host.trim() || undefined,
+        });
+        setResult({ verified: res.verified, message: res.verifyMessage });
+        setPat('');
+      }
       await loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Configuration failed');
@@ -106,24 +127,36 @@ export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceCo
         <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Git Credentials</span>
-            {statusLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            ) : gitStatus?.hasCredentials === true ? (
-              <Badge variant="secondary" className="gap-1 text-[10px]">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                Configured
-              </Badge>
-            ) : gitStatus?.hasCredentials === null ? (
-              <Badge variant="outline" className="gap-1 text-[10px]">
-                <HelpCircle className="h-3 w-3 text-zinc-400" />
-                Unknown
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="gap-1 text-[10px]">
-                <XCircle className="h-3 w-3 text-zinc-400" />
-                Not configured
-              </Badge>
-            )}
+            <div className="flex items-center gap-1.5">
+              {statusLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  {gitStatus?.hasCredentials === true ? (
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                      PAT
+                    </Badge>
+                  ) : gitStatus?.hasCredentials === null ? (
+                    <Badge variant="outline" className="gap-1 text-[10px]">
+                      <HelpCircle className="h-3 w-3 text-zinc-400" />
+                      Unknown
+                    </Badge>
+                  ) : gitStatus?.hasCredentials === false && !gitStatus?.hasSshKeys ? (
+                    <Badge variant="outline" className="gap-1 text-[10px]">
+                      <XCircle className="h-3 w-3 text-zinc-400" />
+                      Not configured
+                    </Badge>
+                  ) : null}
+                  {gitStatus?.hasSshKeys && (
+                    <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <Key className="h-3 w-3 text-emerald-500" />
+                      SSH Keys
+                    </Badge>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           {gitStatus && (gitStatus.gitName || gitStatus.gitEmail) && (
             <div className="text-xs text-muted-foreground space-y-0.5">
@@ -160,31 +193,95 @@ export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceCo
 
         {/* Configuration Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="cfg-pat">Personal Access Token (PAT)</Label>
-            <Input
-              id="cfg-pat"
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-              value={pat}
-              onChange={e => setPat(e.target.value)}
-              required
-              disabled={loading}
-              autoComplete="off"
-            />
-            <p className="text-xs text-muted-foreground">
-              Generate at{' '}
-              <a
-                href="https://github.com/settings/tokens?type=beta"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline inline-flex items-center gap-0.5"
-              >
-                GitHub Settings <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-              {' '}— recommended: Fine-grained token with repository access only
-            </p>
+          {/* Auth method toggle */}
+          <div className="flex items-center gap-1 bg-muted/60 rounded-lg p-0.5 border border-border/50">
+            <button
+              type="button"
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                authMethod === 'pat'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setAuthMethod('pat')}
+            >
+              PAT Token
+            </button>
+            <button
+              type="button"
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                authMethod === 'ssh'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setAuthMethod('ssh')}
+            >
+              <Key className="h-3 w-3" />
+              SSH Key
+            </button>
           </div>
+
+          {authMethod === 'pat' ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="cfg-pat">Personal Access Token (PAT)</Label>
+                <Input
+                  id="cfg-pat"
+                  type="password"
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                  value={pat}
+                  onChange={e => setPat(e.target.value)}
+                  required
+                  disabled={loading}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Generate at{' '}
+                  <a
+                    href="https://github.com/settings/tokens?type=beta"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline inline-flex items-center gap-0.5"
+                  >
+                    GitHub Settings <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                  {' '}— recommended: Fine-grained token with repository access only
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="cfg-ssh-private">Private Key <span className="text-destructive">*</span></Label>
+                <Textarea
+                  id="cfg-ssh-private"
+                  placeholder={`-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA...\n-----END OPENSSH PRIVATE KEY-----`}
+                  value={sshPrivateKey}
+                  onChange={e => setSshPrivateKey(e.target.value)}
+                  required
+                  disabled={loading}
+                  autoComplete="off"
+                  className="font-mono text-xs h-28 resize-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cfg-ssh-public">
+                  Public Key <span className="text-muted-foreground text-xs">(optional)</span>
+                </Label>
+                <Textarea
+                  id="cfg-ssh-public"
+                  placeholder="ssh-ed25519 AAAA..."
+                  value={sshPublicKey}
+                  onChange={e => setSshPublicKey(e.target.value)}
+                  disabled={loading}
+                  autoComplete="off"
+                  className="font-mono text-xs h-16 resize-none"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Keys will be written to <span className="font-mono">~/.ssh/</span> in the sandbox
+              </p>
+            </>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -225,16 +322,18 @@ export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceCo
                   disabled={loading}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="cfg-user">Username</Label>
-                <Input
-                  id="cfg-user"
-                  placeholder="git (default)"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
+              {authMethod === 'pat' && (
+                <div className="space-y-2">
+                  <Label htmlFor="cfg-user">Username</Label>
+                  <Input
+                    id="cfg-user"
+                    placeholder="git (default)"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              )}
             </div>
           </details>
 
@@ -246,8 +345,10 @@ export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceCo
               </>
             ) : (
               <>
-                <GitBranch className="h-4 w-4" />
-                {gitStatus?.hasCredentials === true ? 'Update Git Configuration' : 'Configure Git Access'}
+                {authMethod === 'ssh' ? <Key className="h-4 w-4" /> : <GitBranch className="h-4 w-4" />}
+                {(gitStatus?.hasCredentials === true || gitStatus?.hasSshKeys === true)
+                  ? 'Update Git Configuration'
+                  : 'Configure Git Access'}
               </>
             )}
           </Button>

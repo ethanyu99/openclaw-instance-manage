@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   GitBranch,
   CheckCircle2,
@@ -19,6 +20,7 @@ import {
   HelpCircle,
   Star,
   Unplug,
+  Key,
 } from 'lucide-react';
 import { configureTeamGit, getTeamGitStatus } from '@/lib/api';
 import type { TeamPublic } from '@shared/types';
@@ -31,11 +33,14 @@ interface TeamConfigDialogProps {
 }
 
 export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogProps) {
+  const [authMethod, setAuthMethod] = useState<'pat' | 'ssh'>('pat');
   const [pat, setPat] = useState('');
   const [username, setUsername] = useState('');
   const [gitName, setGitName] = useState('');
   const [gitEmail, setGitEmail] = useState('');
   const [host, setHost] = useState('github.com');
+  const [sshPrivateKey, setSshPrivateKey] = useState('');
+  const [sshPublicKey, setSshPublicKey] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -70,22 +75,39 @@ export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pat.trim()) return;
+
+    if (authMethod === 'pat' && !pat.trim()) return;
+    if (authMethod === 'ssh' && !sshPrivateKey.trim()) return;
 
     setLoading(true);
     setError('');
     setResult(null);
 
     try {
-      const res = await configureTeamGit(team.id, {
-        pat: pat.trim(),
-        username: username.trim() || undefined,
-        gitName: gitName.trim() || undefined,
-        gitEmail: gitEmail.trim() || undefined,
-        host: host.trim() || undefined,
-      });
-      setResult(res);
-      setPat('');
+      if (authMethod === 'ssh') {
+        const res = await configureTeamGit(team.id, {
+          authMethod: 'ssh',
+          sshPrivateKey: sshPrivateKey.trim(),
+          sshPublicKey: sshPublicKey.trim() || undefined,
+          gitName: gitName.trim() || undefined,
+          gitEmail: gitEmail.trim() || undefined,
+          host: host.trim() || undefined,
+        });
+        setResult(res);
+        setSshPrivateKey('');
+        setSshPublicKey('');
+      } else {
+        const res = await configureTeamGit(team.id, {
+          authMethod: 'pat',
+          pat: pat.trim(),
+          username: username.trim() || undefined,
+          gitName: gitName.trim() || undefined,
+          gitEmail: gitEmail.trim() || undefined,
+          host: host.trim() || undefined,
+        });
+        setResult(res);
+        setPat('');
+      }
       await loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Configuration failed');
@@ -136,7 +158,7 @@ export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogP
                       <span className="text-muted-foreground truncate max-w-[100px]">→ {r.instanceName}</span>
                     )}
                   </div>
-                  <div className="shrink-0 ml-2">
+                  <div className="shrink-0 ml-2 flex items-center gap-1">
                     {r.reason === 'unbound' ? (
                       <span className="flex items-center gap-1 text-zinc-400">
                         <Unplug className="h-3 w-3" /> Unbound
@@ -151,7 +173,11 @@ export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogP
                       </span>
                     ) : r.hasCredentials === true ? (
                       <span className="flex items-center gap-1 text-emerald-600">
-                        <CheckCircle2 className="h-3 w-3" /> Git configured
+                        <CheckCircle2 className="h-3 w-3" /> PAT
+                      </span>
+                    ) : r.hasSshKeys ? (
+                      <span className="flex items-center gap-1 text-emerald-600">
+                        <Key className="h-3 w-3" /> SSH Keys
                       </span>
                     ) : r.hasCredentials === null ? (
                       <span className="flex items-center gap-1 text-blue-500">
@@ -217,31 +243,95 @@ export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogP
 
         {/* Configuration Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="team-pat">Personal Access Token (PAT)</Label>
-            <Input
-              id="team-pat"
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-              value={pat}
-              onChange={e => setPat(e.target.value)}
-              required
-              disabled={loading}
-              autoComplete="off"
-            />
-            <p className="text-xs text-muted-foreground">
-              Generate at{' '}
-              <a
-                href="https://github.com/settings/tokens?type=beta"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline inline-flex items-center gap-0.5"
-              >
-                GitHub Settings <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-              {' '}— will be applied to all sandbox instances in this team
-            </p>
+          {/* Auth method toggle */}
+          <div className="flex items-center gap-1 bg-muted/60 rounded-lg p-0.5 border border-border/50">
+            <button
+              type="button"
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                authMethod === 'pat'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setAuthMethod('pat')}
+            >
+              PAT Token
+            </button>
+            <button
+              type="button"
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                authMethod === 'ssh'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setAuthMethod('ssh')}
+            >
+              <Key className="h-3 w-3" />
+              SSH Key
+            </button>
           </div>
+
+          {authMethod === 'pat' ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="team-pat">Personal Access Token (PAT)</Label>
+                <Input
+                  id="team-pat"
+                  type="password"
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                  value={pat}
+                  onChange={e => setPat(e.target.value)}
+                  required
+                  disabled={loading}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Generate at{' '}
+                  <a
+                    href="https://github.com/settings/tokens?type=beta"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline inline-flex items-center gap-0.5"
+                  >
+                    GitHub Settings <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                  {' '}— will be applied to all sandbox instances in this team
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="team-ssh-private">Private Key <span className="text-destructive">*</span></Label>
+                <Textarea
+                  id="team-ssh-private"
+                  placeholder={`-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA...\n-----END OPENSSH PRIVATE KEY-----`}
+                  value={sshPrivateKey}
+                  onChange={e => setSshPrivateKey(e.target.value)}
+                  required
+                  disabled={loading}
+                  autoComplete="off"
+                  className="font-mono text-xs h-28 resize-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="team-ssh-public">
+                  Public Key <span className="text-muted-foreground text-xs">(optional)</span>
+                </Label>
+                <Textarea
+                  id="team-ssh-public"
+                  placeholder="ssh-ed25519 AAAA..."
+                  value={sshPublicKey}
+                  onChange={e => setSshPublicKey(e.target.value)}
+                  disabled={loading}
+                  autoComplete="off"
+                  className="font-mono text-xs h-16 resize-none"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Keys will be written to <span className="font-mono">~/.ssh/</span> in each sandbox instance
+              </p>
+            </>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -282,16 +372,18 @@ export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogP
                   disabled={loading}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="team-user">Username</Label>
-                <Input
-                  id="team-user"
-                  placeholder="git (default)"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
+              {authMethod === 'pat' && (
+                <div className="space-y-2">
+                  <Label htmlFor="team-user">Username</Label>
+                  <Input
+                    id="team-user"
+                    placeholder="git (default)"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              )}
             </div>
           </details>
 
@@ -307,7 +399,7 @@ export function TeamConfigDialog({ team, open, onOpenChange }: TeamConfigDialogP
               </>
             ) : (
               <>
-                <GitBranch className="h-4 w-4" />
+                {authMethod === 'ssh' ? <Key className="h-4 w-4" /> : <GitBranch className="h-4 w-4" />}
                 Configure All Instances
                 {teamStatus && teamStatus.configurable > 0 && (
                   <Badge variant="secondary" className="text-[10px] ml-1">
