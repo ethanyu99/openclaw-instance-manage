@@ -5,6 +5,7 @@ import { History, ChevronDown, Loader2, User, Copy, Check, LogOut, Bell, BellOff
 import type { InstancePublic, InstanceStats } from '@shared/types';
 import { getUserId } from '@/lib/user';
 import { useAuth } from '@/hooks/useAuth';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface StatusBarProps {
   stats: InstanceStats;
@@ -143,6 +144,7 @@ export function StatusBar({ stats, instances, connected, onHistoryClick, notifSu
         </div>
         <div className="flex items-center gap-3">
           <UserBadge />
+          <ThemeToggle />
           {notifSupported && (
             <Button
               variant="ghost"
