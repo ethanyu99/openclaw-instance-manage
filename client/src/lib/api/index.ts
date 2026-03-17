@@ -2,9 +2,10 @@
 export { ApiError, apiFetch, authHeaders } from './client';
 export { fetchInstances, createInstance, updateInstance, deleteInstance, createSandboxInstance, checkHealth, fetchTasks, uploadFiles } from './instances';
 export { fetchTeams, fetchTeamTemplates, fetchTeam, createTeam, updateTeam, deleteTeam, addRoleToTeam, updateRole, deleteRole, bindInstanceToRole, unbindInstance } from './teams';
-export { fetchExecutionsApi, fetchExecutionDetail, deleteExecutionApi, clearExecutionsApi } from './executions';
-export { fetchSessions, fetchSessionDetail, fetchShareSessionDetail, deleteSessionApi, clearSessionsApi, updateSessionTopic, fetchActiveSessions } from './sessions';
+export { fetchExecutionsApi, fetchExecutionDetail, deleteExecutionApi, clearExecutionsApi, fetchExecutionsPaginated } from './executions';
+export { fetchSessions, fetchSessionDetail, fetchShareSessionDetail, deleteSessionApi, clearSessionsApi, updateSessionTopic, fetchActiveSessions, fetchSessionsPaginated } from './sessions';
 export type { ActiveSessionInfo } from './sessions';
+export type { PaginatedResponse, PaginationMeta, PaginationQuery } from './types';
 export { createShareLink, fetchShareTokens, revokeShareToken, fetchShareView } from './share';
 export { fetchSkillRegistry, searchSkillsApi, fetchInstanceSkills, installSkills, uninstallSkills, fetchSkillReadme, checkRemoteStatus, searchRemoteSkills, fetchRemoteSkillContent, installRemoteSkill, SkillsMPApiError } from './skills';
 export type { RemoteSkill, SkillsMPErrorCode } from './skills';
