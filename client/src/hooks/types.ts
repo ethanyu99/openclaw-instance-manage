@@ -48,6 +48,36 @@ export interface ExecutionHistory {
   completedAt?: string;
 }
 
+export interface TeamStepRecord {
+  step: number;
+  role: string;
+  task?: string;
+  instanceId?: string;
+  output: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface TeamExecutionPlanStep {
+  step: number;
+  assignTo: string;
+  task: string;
+  dependencies: number[];
+}
+
+export interface TeamExecutionHistory {
+  id: string;
+  teamId: string;
+  teamName: string;
+  goal: string;
+  plan?: TeamExecutionPlanStep[];
+  steps: TeamStepRecord[];
+  status: 'running' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface PendingExchange {
   instanceId: string;
   instanceName: string;

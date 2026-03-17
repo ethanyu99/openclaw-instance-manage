@@ -1,5 +1,6 @@
 import type { SessionRecord, SessionDetail } from '@shared/types';
 import { apiFetch } from './client';
+import type { PaginatedResponse, PaginationQuery } from './types';
 
 export interface ActiveSessionInfo {
   sessionKey: string;
@@ -8,6 +9,17 @@ export interface ActiveSessionInfo {
 
 export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
   return apiFetch('/sessions');
+}
+
+export async function fetchSessionsPaginated(
+  query: PaginationQuery = {},
+): Promise<PaginatedResponse<SessionRecord>> {
+  const params = new URLSearchParams();
+  params.set('page', String(query.page ?? 1));
+  params.set('limit', String(query.limit ?? 20));
+  if (query.search) params.set('search', query.search);
+  if (query.instanceId) params.set('instanceId', query.instanceId);
+  return apiFetch(`/sessions?${params.toString()}`);
 }
 
 export async function fetchSessionDetail(sessionKey: string): Promise<SessionDetail> {
