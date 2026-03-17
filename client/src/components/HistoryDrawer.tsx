@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, Monitor, Zap } from 'lucide-react';
-import { fetchSessions, deleteSessionApi, clearSessionsApi, clearExecutionsApi, deleteExecutionApi } from '@/lib/api';
+import { Trash2, Monitor, Zap, Loader2 } from 'lucide-react';
+import { fetchSessionsPaginated, deleteSessionApi, clearSessionsApi, clearExecutionsApi, deleteExecutionApi } from '@/lib/api';
 import type { SessionRecord } from '@shared/types';
 import type { ExecutionHistory } from '@/hooks/types';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
@@ -25,20 +25,37 @@ interface HistoryDrawerProps {
   onViewExecution?: (exec: ExecutionHistory) => void;
 }
 
+const SESSION_PAGE_SIZE = 20;
+
 export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecution }: HistoryDrawerProps) {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const [sessionsHasMore, setSessionsHasMore] = useState(false);
+  const [sessionsTotal, setSessionsTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [tab, setTab] = useState<HistoryTab>('sessions');
 
-  const refresh = useCallback(async () => {
+  const fetchPage = useCallback(async (page: number, replace: boolean) => {
     try {
-      const data = await fetchSessions();
-      setSessions(data.sessions);
+      const data = await fetchSessionsPaginated({ page, limit: SESSION_PAGE_SIZE });
+      setSessions(prev => replace ? data.data : [...prev, ...data.data]);
+      setSessionsPage(page);
+      setSessionsHasMore(data.pagination.hasMore);
+      setSessionsTotal(data.pagination.total);
     } catch (err) {
       console.warn('Failed to fetch sessions:', err);
     }
   }, []);
+
+  const refresh = useCallback(() => fetchPage(1, true), [fetchPage]);
+
+  const handleLoadMore = useCallback(async () => {
+    setLoadingMore(true);
+    await fetchPage(sessionsPage + 1, false);
+    setLoadingMore(false);
+  }, [fetchPage, sessionsPage]);
 
   useEffect(() => {
     if (open) refresh(); // eslint-disable-line react-hooks/set-state-in-effect -- Fetch data when drawer opens
@@ -53,6 +70,8 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
       if (!confirm('清除所有会话历史？')) return;
       await clearSessionsApi();
       setSessions([]);
+      setSessionsTotal(0);
+      setSessionsHasMore(false);
     } else {
       if (!confirm('清除所有执行历史？')) return;
       await clearExecutionsApi();
@@ -91,7 +110,7 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
     return acc;
   }, {});
 
-  const currentCount = tab === 'sessions' ? sessions.length : executions.length;
+  const currentCount = tab === 'sessions' ? sessionsTotal : executions.length;
 
   return (
     <>
@@ -132,7 +151,7 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                 onClick={() => setTab('sessions')}
               >
                 <Monitor className="h-3 w-3" />
-                会话 ({sessions.length})
+                会话 ({sessionsTotal})
               </button>
               <button
                 type="button"
@@ -210,6 +229,26 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                       </div>
                     </div>
                   ))}
+                  {sessionsHasMore && (
+                    <div className="flex justify-center py-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs font-mono"
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                      >
+                        {loadingMore ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                            加载中...
+                          </>
+                        ) : (
+                          `加载更多 (${sessionsTotal - sessions.length} 条剩余)`
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )
             )}
