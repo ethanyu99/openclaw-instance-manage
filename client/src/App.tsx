@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { Toaster } from 'sonner';
 import { StatusBar } from '@/components/StatusBar';
 import { InstanceCard } from '@/components/InstanceCard';
 import { AddInstanceDialog } from '@/components/AddInstanceDialog';
@@ -289,6 +290,8 @@ function MainApp() {
         open={autoExecDetailOpen}
         onOpenChange={setAutoExecDetailOpen}
       />
+
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
 }

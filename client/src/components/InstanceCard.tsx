@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { InstancePublic } from '@shared/types';
 import { deleteInstance, checkHealth, updateInstance } from '@/lib/api';
+import { toast } from 'sonner';
 import { useWSStore } from '@/stores/wsStore';
 import { useInstanceStore } from '@/stores/instanceStore';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
@@ -84,7 +85,10 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
     setDeleting(true);
     try {
       await deleteInstance(instance.id);
+      toast.success(`已删除实例 "${instance.name}"`);
       onRefresh();
+    } catch {
+      toast.error('删除实例失败');
     } finally {
       setDeleting(false);
     }

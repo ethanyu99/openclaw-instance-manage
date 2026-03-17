@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Users, Star, X } from 'lucide-react';
 import { fetchTeamTemplates, createTeam } from '@/lib/api';
+import { toast } from 'sonner';
 import type { TeamTemplate } from '@shared/types';
 
 interface CreateTeamDialogProps {
@@ -110,6 +111,7 @@ export function CreateTeamDialog({ onCreated }: CreateTeamDialogProps) {
           })),
         });
       }
+      toast.success('团队创建成功');
       resetForm();
       setOpen(false);
       onCreated();

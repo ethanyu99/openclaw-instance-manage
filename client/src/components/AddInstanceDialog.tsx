@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Cloud, Server } from 'lucide-react';
 import { createInstance, createSandboxInstance } from '@/lib/api';
+import { toast } from 'sonner';
 import { SandboxLoadingAnimation } from './SandboxLoadingAnimation';
 import type { SandboxStep } from './SandboxLoadingAnimation';
 import type { SandboxProgress, SandboxProgressStep } from '@shared/types';
@@ -93,6 +94,7 @@ export function AddInstanceDialog({ onCreated }: AddInstanceDialogProps) {
         description: description.trim(),
         token: token.trim() || undefined,
       });
+      toast.success('实例创建成功');
       resetForm();
       setOpen(false);
       onCreated();
