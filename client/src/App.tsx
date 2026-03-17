@@ -269,13 +269,36 @@ function MainApp() {
             ) : (
               <div className="p-6 pt-2 grid gap-6 grid-cols-1 lg:grid-cols-2">
                 {teams.length === 0 ? (
-                  <div className="col-span-full text-center py-32 text-muted-foreground bg-card/50 rounded-xl border border-dashed border-border/60 backdrop-blur-sm">
-                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-                      <span className="text-2xl">👥</span>
+                  <div className="col-span-full flex flex-col items-center justify-center py-6">
+                    <div className="w-full max-w-2xl mx-auto text-center">
+                      <pre className="text-[11px] leading-tight text-muted-foreground/50 font-mono select-none mb-4">{`
+ _____ ___   _   __  __
+|_   _| __| /_\\ |  \\/  |___
+  | | | _| / _ \\| |\\/| (_-<
+  |_| |___/_/ \\_\\_|  |_/__/
+                      `.trim()}</pre>
+
+                      <p className="text-sm text-muted-foreground mb-6">
+                        Multi-agent orchestration with roles and collaboration
+                      </p>
+
+                      <div className="grid grid-cols-3 gap-3 mb-6 font-mono text-xs">
+                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left">
+                          <div className="text-primary font-semibold mb-1">01 <span className="text-foreground">Define</span></div>
+                          <div className="text-muted-foreground leading-snug">Create a team with roles: PM, Dev, QA</div>
+                        </div>
+                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left opacity-60">
+                          <div className="text-primary font-semibold mb-1">02 <span className="text-foreground">Bind</span></div>
+                          <div className="text-muted-foreground leading-snug">Assign instances to each role</div>
+                        </div>
+                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left opacity-60">
+                          <div className="text-primary font-semibold mb-1">03 <span className="text-foreground">Execute</span></div>
+                          <div className="text-muted-foreground leading-snug">Dispatch goals, agents collaborate automatically</div>
+                        </div>
+                      </div>
+
+                      <CreateTeamDialog onCreated={handleTeamRefresh} />
                     </div>
-                    <p className="text-xl font-semibold mb-2 text-foreground/80">No teams yet</p>
-                    <p className="text-sm mb-4">Create a team from a template or define custom roles</p>
-                    <CreateTeamDialog onCreated={handleTeamRefresh} />
                   </div>
                 ) : (
                   teams.map(team => (
