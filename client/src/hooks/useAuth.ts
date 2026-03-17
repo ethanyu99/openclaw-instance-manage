@@ -61,11 +61,11 @@ export function useAuth() {
       .finally(() => setValidating(false));
   }, []);
 
-  const handleGoogleLogin = useCallback(async (credential: string) => {
+  const handleGoogleLogin = useCallback(async (credential: string, tokenType?: 'id_token' | 'access_token') => {
     setLoading(true);
     try {
       const clientUserId = getUserId();
-      const { token, user: u } = await loginWithGoogle(credential, clientUserId);
+      const { token, user: u } = await loginWithGoogle(credential, clientUserId, tokenType);
       setAuth(token, u);
       notifyAuthChange();
     } catch (err) {

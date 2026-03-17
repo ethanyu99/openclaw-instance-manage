@@ -376,7 +376,12 @@ export const useExecutionStore = create<ExecutionState>((set, get) => ({
   loadExecutions: async () => {
     try {
       const data = await fetchExecutionsApi();
-      set({ executions: data.executions as unknown as ExecutionHistory[] });
+      const executions = ((data.executions ?? []) as unknown as ExecutionHistory[]).map(e => ({
+        ...e,
+        turns: e.turns ?? [],
+        edges: e.edges ?? [],
+      }));
+      set({ executions });
     } catch (err) {
       console.warn('Failed to load executions:', err);
     }

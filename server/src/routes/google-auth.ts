@@ -11,27 +11,38 @@ const getGoogleClient = () => {
   return new OAuth2Client(clientId);
 };
 
+async function resolveGoogleProfile(credential: string, tokenType?: string): Promise<{ email: string; name?: string; picture?: string; googleId: string }> {
+  if (tokenType === 'access_token') {
+    // Exchange access_token for user info via Google's userinfo endpoint
+    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    if (!resp.ok) throw new Error('Failed to fetch Google user info');
+    const info = await resp.json() as { email?: string; name?: string; picture?: string; sub?: string };
+    if (!info.email) throw new Error('No email in Google user info');
+    return { email: info.email, name: info.name, picture: info.picture, googleId: info.sub || '' };
+  }
+
+  // Default: verify id_token
+  const client = getGoogleClient();
+  const ticket = await client.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  if (!payload || !payload.email) throw new Error('Invalid Google token');
+  return { email: payload.email, name: payload.name, picture: payload.picture, googleId: payload.sub! };
+}
+
 googleAuthRouter.post('/google', async (req, res) => {
   try {
-    const { credential, clientUserId } = req.body;
+    const { credential, clientUserId, tokenType } = req.body;
     if (!credential) {
       res.status(400).json({ error: 'credential is required' });
       return;
     }
 
-    const client = getGoogleClient();
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    if (!payload || !payload.email) {
-      res.status(400).json({ error: 'Invalid Google token' });
-      return;
-    }
-
-    const { email, name, picture, sub: googleId } = payload;
+    const { email, name, picture, googleId } = await resolveGoogleProfile(credential, tokenType);
     const pool = getPool();
 
     // Check if user already exists by email

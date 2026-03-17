@@ -103,8 +103,8 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
   }, {});
 
   // Group autonomous executions by date
-  const execGrouped = executions.reduce<Record<string, ExecutionHistory[]>>((acc, exec) => {
-    const date = new Date(exec.createdAt).toLocaleDateString();
+  const execGrouped = (executions ?? []).reduce<Record<string, ExecutionHistory[]>>((acc, exec) => {
+    const date = exec.createdAt ? new Date(exec.createdAt).toLocaleDateString() : 'Unknown';
     if (!acc[date]) acc[date] = [];
     acc[date].push(exec);
     return acc;
@@ -287,7 +287,7 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
                                   variant={exec.status === 'completed' ? 'secondary' : exec.status === 'failed' ? 'destructive' : exec.status === 'timeout' ? 'outline' : 'default'}
                                   className="text-[9px] font-mono h-4 px-1 rounded-sm shrink-0"
                                 >
-                                  {exec.turns.length} turns
+                                  {exec.turns?.length ?? 0} turns
                                 </Badge>
                               </div>
                               <div className="flex items-center gap-2 shrink-0 h-4">
