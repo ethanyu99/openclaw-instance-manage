@@ -10,6 +10,7 @@ import { TeamCard } from '@/components/TeamCard';
 import { ExecutionPanel } from '@/components/ExecutionPanel';
 import { ExecutionReportDialog } from '@/components/ExecutionReportDialog';
 import { ShareView } from '@/components/ShareView';
+import { WelcomeGuide } from '@/components/WelcomeGuide';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotification } from '@/hooks/useNotification';
 import { useInstanceStore } from '@/stores/instanceStore';
@@ -219,13 +220,7 @@ function MainApp() {
             {activeTab === 'instances' ? (
               <div className="p-6 pt-2 grid gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
                 {instances.length === 0 ? (
-                  <div className="col-span-full text-center py-32 text-muted-foreground bg-card/50 rounded-xl border border-dashed border-border/60 backdrop-blur-sm">
-                    <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-                      <span className="text-2xl">⚡️</span>
-                    </div>
-                    <p className="text-xl font-semibold mb-2 text-foreground/80">No instances configured</p>
-                    <p className="text-sm">Add an instance to get your Lobster Squad started</p>
-                  </div>
+                  <WelcomeGuide onCreated={refreshInstances} />
                 ) : (
                   instances.map(inst => (
                     <InstanceCard
