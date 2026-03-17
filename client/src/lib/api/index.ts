@@ -9,7 +9,7 @@ export type { PaginatedResponse, PaginationMeta, PaginationQuery } from './types
 export { createShareLink, fetchShareTokens, revokeShareToken, fetchShareView } from './share';
 export { fetchSkillRegistry, searchSkillsApi, fetchInstanceSkills, installSkills, uninstallSkills, fetchSkillReadme, checkRemoteStatus, searchRemoteSkills, fetchRemoteSkillContent, installRemoteSkill, SkillsMPApiError } from './skills';
 export type { RemoteSkill, SkillsMPErrorCode } from './skills';
-export { configureSandboxGit, getSandboxGitStatus, configureTeamGit, getTeamGitStatus, listSandboxFiles, readSandboxFile, downloadSandboxFile, downloadSandboxArchive } from './sandbox';
+export { configureSandboxGit, getSandboxGitStatus, configureTeamGit, getTeamGitStatus, listSandboxFiles, readSandboxFile, downloadSandboxFile, downloadSandboxArchive, uploadFileToSandbox } from './sandbox';
 export type { GitConfigPayload, GitConfigResult, GitStatusResult, TeamGitConfigResult, TeamRoleGitStatus, TeamGitStatusResult, SandboxFileListResult, SandboxFileReadResult } from './sandbox';
 export { loginWithGoogle, fetchCurrentUser } from './auth';
 export { createWebSocket, createShareWebSocket } from './ws';

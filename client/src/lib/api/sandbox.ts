@@ -137,3 +137,15 @@ export async function downloadSandboxArchive(instanceId: string, dirPath?: strin
   const url = `${API_BASE}/instances/${instanceId}/sandbox/files/download-archive?${params}`;
   return triggerBlobDownload(url, filename);
 }
+
+export async function uploadFileToSandbox(
+  instanceId: string,
+  fileName: string,
+  content: string, // base64
+  targetDir?: string,
+): Promise<{ success: boolean; path: string; size: number }> {
+  return apiFetch(`/instances/${instanceId}/sandbox/files/upload`, {
+    method: 'POST',
+    body: JSON.stringify({ fileName, content, filePath: targetDir }),
+  });
+}

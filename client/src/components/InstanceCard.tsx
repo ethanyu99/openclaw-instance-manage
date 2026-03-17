@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, Package, FolderOpen, MessageSquare, Terminal } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, Package, FolderOpen, MessageSquare, Terminal, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,7 @@ import { ShareDialog } from '@/components/ShareDialog';
 import { SkillsManagerDialog } from '@/components/skills/SkillsManagerDialog';
 import { FileBrowserDialog } from '@/components/FileBrowserDialog';
 import { TerminalDialog } from '@/components/TerminalDialog';
+import { FileUploadDialog } from '@/components/FileUploadDialog';
 
 interface InstanceCardProps {
   instance: InstancePublic;
@@ -54,6 +55,9 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
   const [error, setError] = useState('');
 
   const [deleting, setDeleting] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
 
   const handleEditSave = async () => {
     if (!editName.trim()) {
@@ -110,7 +114,12 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
 
   return (
     <>
-      <Card className="hover:border-primary/40 hover:shadow-md transition-all duration-200 bg-card border-border/80 shadow-sm">
+      <Card
+        className={`hover:border-primary/40 hover:shadow-md transition-all duration-200 bg-card border-border/80 shadow-sm relative ${dragOver ? 'ring-2 ring-primary border-primary' : ''}`}
+        onDragOver={instance.sandboxId ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); } : undefined}
+        onDragLeave={instance.sandboxId ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); } : undefined}
+        onDrop={instance.sandboxId ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); if (e.dataTransfer.files.length > 0) { setDroppedFiles(Array.from(e.dataTransfer.files)); setUploadOpen(true); } } : undefined}
+      >
         <CardHeader className="pb-3 border-b border-border/40 bg-muted/20 overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -175,6 +184,17 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
                 title="Files"
               >
                 <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            )}
+            {instance.sandboxId && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 hover:bg-muted"
+                onClick={(e) => { e.stopPropagation(); setUploadOpen(true); }}
+                title="Upload"
+              >
+                <Upload className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             )}
             {instance.sandboxId && (
@@ -314,6 +334,17 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
             </div>
           )}
         </CardContent>
+
+        {/* Drag overlay */}
+        {dragOver && instance.sandboxId && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg border-2 border-dashed border-primary pointer-events-none">
+            <div className="text-center">
+              <Upload className="h-8 w-8 mx-auto mb-2 text-primary" />
+              <p className="text-sm font-mono font-medium text-primary">Drop to upload</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{instance.name}/workspace</p>
+            </div>
+          </div>
+        )}
       </Card>
 
       <SessionDetailDialog
@@ -406,6 +437,14 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
         instance={instance}
         open={terminalOpen}
         onOpenChange={setTerminalOpen}
+      />
+
+      <FileUploadDialog
+        instanceId={instance.id}
+        instanceName={instance.name}
+        open={uploadOpen}
+        onOpenChange={(v) => { setUploadOpen(v); if (!v) setDroppedFiles([]); }}
+        initialFiles={droppedFiles}
       />
     </>
   );

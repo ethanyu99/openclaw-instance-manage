@@ -193,3 +193,46 @@ sandboxFilesRouter.get('/:id/sandbox/files/download-archive', async (req, res) =
     res.status(500).json({ error: msg });
   }
 });
+
+// ── Upload files to sandbox workspace ──
+
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50 MB per file
+
+sandboxFilesRouter.post('/:id/sandbox/files/upload', async (req, res) => {
+  const ownerId = req.userContext!.userId;
+  const instance = await store.getInstanceRawForOwner(ownerId, req.params.id);
+  if (!instance) return res.status(404).json({ error: 'Instance not found' });
+  if (!instance.sandboxId || !instance.apiKey) {
+    return res.status(400).json({ error: 'Instance is not a sandbox instance' });
+  }
+
+  const { fileName, filePath: targetDir, content } = req.body;
+  if (!fileName || !content) {
+    return res.status(400).json({ error: 'fileName and content (base64) are required' });
+  }
+
+  const destDir = targetDir || DEFAULT_ROOT;
+  const destPath = path.join(destDir, fileName);
+  if (!isPathAllowed(destPath)) {
+    return res.status(403).json({ error: 'Access denied: path outside allowed root' });
+  }
+
+  const buf = Buffer.from(content, 'base64');
+  if (buf.length > MAX_UPLOAD_SIZE) {
+    return res.status(413).json({
+      error: `File too large (${(buf.length / 1024 / 1024).toFixed(1)}MB). Max: ${MAX_UPLOAD_SIZE / 1024 / 1024}MB`,
+    });
+  }
+
+  try {
+    const sandbox = await connectSandbox(instance.sandboxId, instance.apiKey);
+    // Ensure target directory exists
+    await sandbox.commands.run(`mkdir -p "${destDir}"`, { timeoutMs: 10_000 });
+    await sandbox.files.write(destPath, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+    res.json({ success: true, path: destPath, size: buf.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to upload file';
+    console.error(`[sandbox-files] Upload failed for ${instance.name}:`, msg);
+    res.status(500).json({ error: msg });
+  }
+});
