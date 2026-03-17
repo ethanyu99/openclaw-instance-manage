@@ -1,5 +1,3 @@
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Rocket, Terminal, Users, FolderOpen } from 'lucide-react';
 import { AddInstanceDialog } from './AddInstanceDialog';
 
 interface WelcomeGuideProps {
@@ -8,73 +6,36 @@ interface WelcomeGuideProps {
 
 export function WelcomeGuide({ onCreated }: WelcomeGuideProps) {
   return (
-    <div className="col-span-full max-w-2xl mx-auto py-16 px-4">
-      <div className="text-center mb-8">
-        <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Rocket className="h-10 w-10 text-primary" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Welcome to Lobster Squad! 🦞</h2>
-        <p className="text-muted-foreground">
-          Manage and orchestrate your AI coding instances in one place.
+    <div className="col-span-full flex flex-col items-center justify-center py-6">
+      <div className="w-full max-w-2xl mx-auto text-center">
+        <pre className="text-[11px] leading-tight text-muted-foreground/50 font-mono select-none mb-4">{`
+  _        _       _              ___                  _
+ | |   ___| |__ __| |_ ___ _ _  / __| __ _ _  _ __ _ __| |
+ | |__/ _ \\ '_ (_-<  _/ -_) '_| \\__ \\/ _\` | || / _\` / _\` |
+ |____\\___/_.__/__/\\__\\___|_|   |___/\\__, |\\_,_\\__,_\\__,_|
+                                        |_|
+        `.trim()}</pre>
+
+        <p className="text-sm text-muted-foreground mb-6">
+          AI coding instance orchestration platform
         </p>
-      </div>
 
-      <div className="grid gap-4 mb-8">
-        <Card className="border-dashed">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <span className="bg-primary/10 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold text-primary">1</span>
-              Add your first instance
-            </CardTitle>
-            <CardDescription>
-              Connect an OpenClaw instance or create a sandbox to get started.
-              Instances are the runtime environments for your AI agents.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <div className="grid grid-cols-3 gap-3 mb-6 font-mono text-xs">
+          <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left">
+            <div className="text-primary font-semibold mb-1">01 <span className="text-foreground">Connect</span></div>
+            <div className="text-muted-foreground leading-snug">Add an instance or spin up a sandbox</div>
+          </div>
+          <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left opacity-60">
+            <div className="text-primary font-semibold mb-1">02 <span className="text-foreground">Dispatch</span></div>
+            <div className="text-muted-foreground leading-snug">Send tasks, stream output in real-time</div>
+          </div>
+          <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left opacity-60">
+            <div className="text-primary font-semibold mb-1">03 <span className="text-foreground">Collaborate</span></div>
+            <div className="text-muted-foreground leading-snug">Multi-agent teams: PM, Dev, QA</div>
+          </div>
+        </div>
 
-        <Card className="border-dashed opacity-60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <span className="bg-muted rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</span>
-              Dispatch Tasks
-            </CardTitle>
-            <CardDescription>
-              Send coding tasks to instances using the input box below and view output in real-time.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        <Card className="border-dashed opacity-60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <span className="bg-muted rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</span>
-              Build Team Collaboration
-            </CardTitle>
-            <CardDescription>
-              Create teams with multiple instances playing different roles (PM, Dev, QA) to collaborate on complex tasks.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-
-      <div className="text-center">
         <AddInstanceDialog onCreated={onCreated} />
-      </div>
-
-      <div className="mt-8 grid grid-cols-3 gap-4 text-center text-xs text-muted-foreground">
-        <div className="flex flex-col items-center gap-1">
-          <Terminal className="h-4 w-4" />
-          <span>Web Terminal</span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <FolderOpen className="h-4 w-4" />
-          <span>File Browser</span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <Users className="h-4 w-4" />
-          <span>Multi-Instance</span>
-        </div>
       </div>
     </div>
   );

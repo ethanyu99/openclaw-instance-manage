@@ -40,7 +40,8 @@ export function HistoryDrawer({ open, onOpenChange, executions = [], onViewExecu
   const fetchPage = useCallback(async (page: number, replace: boolean) => {
     try {
       const data = await fetchSessionsPaginated({ page, limit: SESSION_PAGE_SIZE });
-      setSessions(prev => replace ? data.data : [...prev, ...data.data]);
+      const items = data.data ?? [];
+      setSessions(prev => replace ? items : [...prev, ...items]);
       setSessionsPage(page);
       setSessionsHasMore(data.pagination.hasMore);
       setSessionsTotal(data.pagination.total);
