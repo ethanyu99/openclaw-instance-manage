@@ -464,7 +464,7 @@ export function ShareView({ token }: ShareViewProps) {
   const teams: TeamPublic[] = data.team ? [data.team] : [];
 
   return (
-    <div className="h-screen flex flex-col bg-[#f8f9fa] text-foreground font-sans selection:bg-primary/20 selection:text-primary">
+    <div className="h-screen flex flex-col bg-[#f8f9fa] dark:bg-[#0d1117] text-foreground font-sans selection:bg-primary/20 selection:text-primary">
       {/* Share banner */}
       <div className="bg-primary/5 border-b border-primary/20 shrink-0">
         <div className="max-w-full px-6 py-2.5 flex items-center justify-between">
