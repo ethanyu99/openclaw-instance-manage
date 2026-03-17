@@ -132,7 +132,7 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
                 </Badge>
               )}
               {instance.sandboxId && (
-                <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold gap-1 text-blue-600 border-blue-200 bg-blue-50/50">
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold gap-1 text-muted-foreground border-border bg-muted/50">
                   <Cloud className="h-3 w-3" />
                   Sandbox
                 </Badge>
@@ -221,8 +221,8 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
               <span className="truncate select-text">{instance.endpoint || 'No endpoint'}</span>
             </div>
             {instance.endpoint && instance.token && (
-              <div className="font-mono text-xs text-blue-600/80 bg-blue-50/50 px-2 py-1.5 rounded-md border border-blue-200/50 min-w-0 overflow-hidden flex items-center">
-                <a href={`${instance.endpoint?.replace(/^ws/, 'http') || ''}#token=${instance.token}`} target="_blank" rel="noreferrer" className="hover:text-blue-600 hover:underline flex items-center gap-1.5 min-w-0 w-full">
+              <div className="font-mono text-xs text-muted-foreground bg-muted/50 px-2 py-1.5 rounded-md border border-border/50 min-w-0 overflow-hidden flex items-center">
+                <a href={`${instance.endpoint?.replace(/^ws/, 'http') || ''}#token=${instance.token}`} target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline flex items-center gap-1.5 min-w-0 w-full">
                   <span className="truncate">Web UI: {instance.endpoint}?token={instance.token.substring(0, 8)}...</span>
                   <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>

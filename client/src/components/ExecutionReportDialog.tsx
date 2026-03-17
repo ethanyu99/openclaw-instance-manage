@@ -77,7 +77,7 @@ const STATUS_CONFIG = {
   completed: { color: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Completed', icon: CheckCircle2 },
   failed: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Failed', icon: XCircle },
   timeout: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'Timeout', icon: AlertTriangle },
-  running: { color: 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse', label: 'Running', icon: Clock },
+  running: { color: 'bg-muted/50 text-foreground border-border animate-pulse', label: 'Running', icon: Clock },
   cancelled: { color: 'bg-zinc-50 text-zinc-700 border-zinc-200', label: 'Cancelled', icon: XCircle },
 } as const;
 

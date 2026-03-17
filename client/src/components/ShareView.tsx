@@ -601,7 +601,7 @@ export function ShareView({ token }: ShareViewProps) {
                       </Badge>
                     )}
                     {instance.sandboxId && (
-                      <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold gap-1 text-blue-600 border-blue-200 bg-blue-50/50 whitespace-nowrap">
+                      <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold gap-1 text-muted-foreground border-border bg-muted/50 whitespace-nowrap">
                         Sandbox
                       </Badge>
                     )}

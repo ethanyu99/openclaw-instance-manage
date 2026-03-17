@@ -434,7 +434,7 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
               type="button"
               variant={pendingNewSession ? 'secondary' : 'ghost'}
               size="sm"
-              className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`h-7 text-xs gap-1.5 shrink-0 font-medium ${pendingNewSession ? 'bg-primary/10 text-primary hover:bg-primary/15 border border-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
               onClick={handleNewSession}
               title="Start a new session (reset context)"
             >

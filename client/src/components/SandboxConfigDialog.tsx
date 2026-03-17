@@ -113,7 +113,7 @@ export function SandboxConfigDialog({ instance, open, onOpenChange }: InstanceCo
             <GitBranch className="h-5 w-5" />
             <span>Instance Configuration — {instance.name}</span>
             {isSandbox ? (
-              <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 border-blue-200">
+              <Badge variant="outline" className="text-[10px] gap-1 text-muted-foreground border-border">
                 <Cloud className="h-3 w-3" /> Sandbox
               </Badge>
             ) : (
