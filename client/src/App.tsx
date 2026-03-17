@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { Toaster } from 'sonner';
 import { StatusBar } from '@/components/StatusBar';
 import { InstanceCard } from '@/components/InstanceCard';
@@ -33,17 +33,36 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 function LoginPage() {
   const { handleGoogleLogin, loading } = useAuth();
   const [error, setError] = useState('');
+  const [processingRedirect, setProcessingRedirect] = useState(false);
 
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        await handleGoogleLogin(tokenResponse.access_token, 'access_token');
-      } catch {
-        setError('Login failed, please try again');
-      }
-    },
-    onError: () => setError('Google login failed, please try again'),
-  });
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || hash.length < 2) return;
+
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get('access_token');
+    if (!accessToken) return;
+
+    window.history.replaceState(null, '', window.location.pathname);
+    setProcessingRedirect(true);
+
+    handleGoogleLogin(accessToken, 'access_token')
+      .catch(() => setError('Login failed, please try again'))
+      .finally(() => setProcessingRedirect(false));
+  }, [handleGoogleLogin]);
+
+  const startGoogleLogin = () => {
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: window.location.origin,
+      response_type: 'token',
+      scope: 'openid email profile',
+      prompt: 'select_account',
+    });
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  };
+
+  const isLoading = loading || processingRedirect;
 
   return (
     <div className="h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#0d1117]">
@@ -63,7 +82,7 @@ function LoginPage() {
           )}
 
           <div className="flex justify-center">
-            {loading ? (
+            {isLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -74,7 +93,7 @@ function LoginPage() {
             ) : (
               <button
                 type="button"
-                onClick={() => googleLogin()}
+                onClick={startGoogleLogin}
                 className="flex items-center gap-3 px-6 py-2.5 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-sm font-medium text-foreground shadow-sm"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
