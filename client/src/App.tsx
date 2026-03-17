@@ -35,7 +35,7 @@ function LoginPage() {
   const [error, setError] = useState('');
 
   return (
-    <div className="h-screen flex items-center justify-center bg-[#f8f9fa]">
+    <div className="h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#0d1117]">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
       <div className="relative z-10 w-full max-w-sm mx-auto px-6">
         <div className="bg-card rounded-2xl border border-border/80 shadow-lg p-8 text-center">
@@ -46,7 +46,7 @@ function LoginPage() {
           <p className="text-sm text-muted-foreground mb-8">Sign in to manage your instances</p>
 
           {error && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+            <div className="mb-4 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 text-xs text-red-600 dark:text-red-400">
               {error}
             </div>
           )}
@@ -108,7 +108,7 @@ function AuthGate() {
 
   if (validating) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#f8f9fa]">
+      <div className="h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#0d1117]">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -169,7 +169,7 @@ function MainApp() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#f8f9fa] text-foreground font-sans selection:bg-primary/20 selection:text-primary">
+    <div className="h-screen flex flex-col bg-[#f8f9fa] dark:bg-[#0d1117] text-foreground font-sans selection:bg-primary/20 selection:text-primary">
       <StatusBar
         stats={stats}
         instances={instances}
