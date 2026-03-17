@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { ChevronDown, ChevronRight, Users, Target, ListChecks, CheckCircle2, XCircle, Clock, SkipForward } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { TeamExecutionHistory, TeamStepRecord } from '@/lib/storage';
+import type { TeamExecutionHistory, TeamStepRecord } from '@/hooks/types';
 
 interface TeamExecutionDetailDialogProps {
   execution: TeamExecutionHistory | null;
