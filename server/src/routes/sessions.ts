@@ -58,8 +58,38 @@ sessionRouter.get('/active', async (req, res) => {
 sessionRouter.get('/', async (req, res) => {
   const ownerId = req.userContext!.userId;
   try {
-    const sessions = await loadSessionsByOwner(ownerId);
-    res.json({ sessions });
+    const page = parseInt(req.query.page as string);
+    if (page && page > 0) {
+      // Paginated response
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+      const offset = (page - 1) * limit;
+      const pool = getPool();
+      const [countResult, dataResult] = await Promise.all([
+        pool.query('SELECT COUNT(*) FROM sessions WHERE owner_id = $1', [ownerId]),
+        pool.query(
+          'SELECT * FROM sessions WHERE owner_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3',
+          [ownerId, limit, offset]
+        ),
+      ]);
+      const total = parseInt(countResult.rows[0].count);
+      const sessions = dataResult.rows.map((row: any) => ({
+        sessionKey: row.id,
+        ownerId: row.owner_id,
+        instanceId: row.instance_id,
+        instanceName: row.instance_name,
+        topic: row.topic || undefined,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+      }));
+      res.json({
+        data: sessions,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: offset + limit < total },
+      });
+    } else {
+      // Legacy: return all
+      const sessions = await loadSessionsByOwner(ownerId);
+      res.json({ sessions });
+    }
   } catch (err) {
     console.error('[sessions] Failed to load sessions:', err);
     res.status(500).json({ error: 'Failed to load sessions' });
