@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, Package, FolderOpen, MessageSquare, Terminal, Upload } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, FolderOpen, MessageSquare, Terminal, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,6 @@ import { useInstanceStore } from '@/stores/instanceStore';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 import { SandboxConfigDialog } from '@/components/SandboxConfigDialog';
 import { ShareDialog } from '@/components/ShareDialog';
-import { SkillsManagerDialog } from '@/components/skills/SkillsManagerDialog';
 import { FileBrowserDialog } from '@/components/FileBrowserDialog';
 import { TerminalDialog } from '@/components/TerminalDialog';
 import { FileUploadDialog } from '@/components/FileUploadDialog';
@@ -46,7 +45,6 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
   const [configOpen, setConfigOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [skillsOpen, setSkillsOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [editName, setEditName] = useState(instance.name);
@@ -164,17 +162,6 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
             >
               <Share2 className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
-            {instance.sandboxId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 hover:bg-muted"
-                onClick={(e) => { e.stopPropagation(); setSkillsOpen(true); }}
-                title="Skills"
-              >
-                <Package className="h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            )}
             {instance.sandboxId && (
               <Button
                 variant="ghost"
@@ -419,12 +406,6 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
         shareType="instance"
         targetId={instance.id}
         targetName={instance.name}
-      />
-
-      <SkillsManagerDialog
-        instance={instance}
-        open={skillsOpen}
-        onOpenChange={setSkillsOpen}
       />
 
       <FileBrowserDialog

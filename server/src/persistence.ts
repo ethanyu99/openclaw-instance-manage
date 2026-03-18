@@ -1,5 +1,5 @@
 import { getPool } from './db';
-import type { Instance, TaskSummary, Team, ClawRole, TeamMemberSlot, ShareToken, SessionRecord, SessionDetail, SessionExchangeRecord, ExecutionRecord, InstanceSkill } from '../../shared/types';
+import type { Instance, TaskSummary, Team, ClawRole, TeamMemberSlot, ShareToken, SessionRecord, SessionDetail, SessionExchangeRecord, ExecutionRecord } from '../../shared/types';
 
 // ── Teams ──────────────────────────────
 
@@ -452,52 +452,4 @@ export async function deleteExecutionFromDB(ownerId: string, id: string): Promis
 export async function clearExecutionsForOwner(ownerId: string): Promise<void> {
   const pool = getPool();
   await pool.query('DELETE FROM executions WHERE owner_id = $1', [ownerId]);
-}
-
-// ── Instance Skills ──────────────────────
-
-export async function loadInstanceSkills(): Promise<InstanceSkill[]> {
-  const pool = getPool();
-  try {
-    const { rows } = await pool.query('SELECT * FROM instance_skills ORDER BY installed_at ASC');
-    return rows.map(row => ({
-      instanceId: row.instance_id,
-      skillId: row.skill_id,
-      installedAt: row.installed_at.toISOString(),
-    }));
-  } catch (err) {
-    console.error('[persistence] Failed to load instance skills from PG:', err);
-    return [];
-  }
-}
-
-export async function saveInstanceSkill(instanceId: string, skillId: string): Promise<void> {
-  const pool = getPool();
-  await pool.query(
-    `INSERT INTO instance_skills (instance_id, skill_id, installed_at)
-     VALUES ($1, $2, NOW())
-     ON CONFLICT (instance_id, skill_id) DO NOTHING`,
-    [instanceId, skillId]
-  );
-}
-
-export async function deleteInstanceSkill(instanceId: string, skillId: string): Promise<void> {
-  const pool = getPool();
-  await pool.query(
-    'DELETE FROM instance_skills WHERE instance_id = $1 AND skill_id = $2',
-    [instanceId, skillId]
-  );
-}
-
-export async function getSkillsByInstance(instanceId: string): Promise<InstanceSkill[]> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    'SELECT * FROM instance_skills WHERE instance_id = $1 ORDER BY installed_at ASC',
-    [instanceId]
-  );
-  return rows.map(row => ({
-    instanceId: row.instance_id,
-    skillId: row.skill_id,
-    installedAt: row.installed_at.toISOString(),
-  }));
 }

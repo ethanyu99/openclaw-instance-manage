@@ -17,14 +17,12 @@ import { shareRouter, shareViewRouter } from './routes/share';
 import { googleAuthRouter } from './routes/google-auth';
 import { sessionRouter } from './routes/sessions';
 import { executionRouter } from './routes/executions';
-import { skillsRouter } from './routes/skills';
 import { sandboxFilesRouter } from './routes/sandbox-files';
 import { setupWebSocket } from './ws';
 import { authMiddleware } from './auth';
 import { initDB } from './db';
 import { initStore, store } from './store';
 import { initRedis } from './redis';
-import { initSkillLoader } from './skill-loader';
 import { errorHandler } from './middleware/error-handler';
 import { rateLimiter } from './middleware/rate-limiter';
 
@@ -58,7 +56,6 @@ app.use('/api/instances', authMiddleware, instanceConfigRouter);
 app.use('/api/instances', authMiddleware, sandboxFilesRouter);
 app.use('/api/sessions', authMiddleware, sessionRouter);
 app.use('/api/executions', authMiddleware, executionRouter);
-app.use('/api/skills', authMiddleware, skillsRouter);
 app.use('/api/upload', authMiddleware, uploadRouter);
 app.use('/api/auth', googleAuthRouter);
 app.use('/api/share/view', shareViewRouter);
@@ -87,7 +84,6 @@ async function start() {
   await initDB();
   await initRedis();
   await initStore();
-  initSkillLoader();
 
   // WebSocket setup (after Redis is ready for pub/sub)
   setupWebSocket(wss);
