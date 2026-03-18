@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { History, ChevronDown, Loader2, User, Copy, Check, LogOut, Bell, BellOff } from 'lucide-react';
 import type { InstancePublic, InstanceStats } from '@shared/types';
@@ -140,11 +139,23 @@ export function StatusBar({ stats, instances, connected, onHistoryClick, notifSu
               <span className="inline-block w-2 h-2 rounded-full bg-zinc-400" />
               Offline: <span className="text-foreground">{stats.offline}</span>
             </span>
+            <span className="text-border">|</span>
+            <span className="flex items-center gap-1.5">
+              <span className={`inline-block w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse'}`} />
+              {connected ? 'Connected' : 'Disconnected'}
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <UserBadge />
-          <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 text-xs font-semibold h-8 border-border/80 hover:bg-muted/60"
+            onClick={onHistoryClick}
+          >
+            <History className="h-3.5 w-3.5" />
+            History
+          </Button>
           {notifSupported && (
             <Button
               variant="ghost"
@@ -156,18 +167,8 @@ export function StatusBar({ stats, instances, connected, onHistoryClick, notifSu
               {notifEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 text-xs font-semibold h-8 border-border/80 hover:bg-muted/60"
-            onClick={onHistoryClick}
-          >
-            <History className="h-3.5 w-3.5" />
-            History
-          </Button>
-          <Badge variant={connected ? 'default' : 'destructive'} className="text-[10px] uppercase tracking-wider font-bold h-6 px-2.5 shadow-sm">
-            {connected ? 'Connected' : 'Disconnected'}
-          </Badge>
+          <ThemeToggle />
+          <UserBadge />
         </div>
       </div>
 
