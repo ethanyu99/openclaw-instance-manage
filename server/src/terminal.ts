@@ -24,13 +24,23 @@ export async function createTerminal(
     timeoutMs: SANDBOX_KEEP_ALIVE_MS,
   });
 
+  // Ensure workspace dir exists, fallback to home
+  const DEFAULT_CWD = '/home/user/.openclaw/workspace';
+  const FALLBACK_CWD = '/home/user';
+  let cwd = DEFAULT_CWD;
+  try {
+    await sandbox.commands.run(`mkdir -p "${DEFAULT_CWD}"`, { timeoutMs: 10_000 });
+  } catch {
+    cwd = FALLBACK_CWD;
+  }
+
   const handle = await sandbox.pty.create({
     cols,
     rows,
     onData: (data: Uint8Array) => {
       sendData(data);
     },
-    cwd: '/home/user/.openclaw/workspace',
+    cwd,
     envs: { TERM: 'xterm-256color' },
   });
 

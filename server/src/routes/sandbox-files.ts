@@ -42,7 +42,22 @@ sandboxFilesRouter.get('/:id/sandbox/files', async (req, res) => {
 
   try {
     const sandbox = await connectSandbox(instance.sandboxId, instance.apiKey);
-    const entries = await sandbox.files.list(dirPath, { depth });
+
+    // Auto-create default workspace dir if it doesn't exist
+    let listPath = dirPath;
+    try {
+      await sandbox.files.list(listPath, { depth: 1 });
+    } catch {
+      if (listPath === DEFAULT_ROOT) {
+        try {
+          await sandbox.commands.run(`mkdir -p "${DEFAULT_ROOT}"`, { timeoutMs: 10_000 });
+        } catch {
+          listPath = ALLOWED_ROOT; // fallback to /home/user
+        }
+      }
+    }
+
+    const entries = await sandbox.files.list(listPath, { depth });
 
     const files: SandboxFileEntry[] = entries
       .filter(e => showHidden || !e.name.startsWith('.'))
