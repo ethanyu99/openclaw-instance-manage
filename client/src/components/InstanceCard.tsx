@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, XCircle, FolderOpen, MessageSquare, Terminal, Upload } from 'lucide-react';
+import { Trash2, RefreshCw, Cloud, Edit2, ExternalLink, Star, Settings, Share2, FolderOpen, MessageSquare, Terminal, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,6 @@ import { Textarea } from '@/components/ui/textarea';
 import type { InstancePublic } from '@shared/types';
 import { deleteInstance, checkHealth, updateInstance } from '@/lib/api';
 import { toast } from 'sonner';
-import { useWSStore } from '@/stores/wsStore';
 import { useInstanceStore } from '@/stores/instanceStore';
 import { SessionDetailDialog } from '@/components/SessionDetailDialog';
 import { SandboxConfigDialog } from '@/components/SandboxConfigDialog';
@@ -34,7 +33,6 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
   // Subscribe to this instance's stream only (avoids re-render on other instances' streams)
   const taskStream = useInstanceStore(s => s.taskStreams[instance.id]);
   const activeSession = useInstanceStore(s => s.activeSessions[instance.id]);
-  const cancelTask = useWSStore(s => s.cancelTask);
   const [detailOpen, setDetailOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -245,74 +243,31 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
             )}
           </div>
         </CardHeader>
-        <CardContent className="pt-4">
-          {instance.description && (
-            <p className="text-sm text-muted-foreground mb-3">{instance.description}</p>
-          )}
-
-          {instance.role && instance.role.capabilities.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-3">
-              {instance.role.capabilities.map((cap, i) => (
-                <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                  {cap}
-                </Badge>
-              ))}
-            </div>
-          )}
-
-          {instance.currentTask && (
-            <div
-              className="rounded-lg border border-border/60 bg-card p-3 text-sm space-y-2 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all"
-              onClick={handleTaskClick}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-foreground/80 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary/40"></span>
-                  Current Task
+        {/* ── Compact footer ── */}
+        {(instance.currentTask || instance.description) && (
+          <div className="px-4 pb-3 pt-1">
+            {instance.currentTask && (
+              <div
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/30 dark:bg-muted/10 border border-border/30 dark:border-border/15 cursor-pointer hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors"
+                onClick={handleTaskClick}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  instance.currentTask.status === 'running' ? 'bg-amber-500 animate-pulse' :
+                  instance.currentTask.status === 'completed' ? 'bg-emerald-500' : 'bg-red-500'
+                }`} />
+                <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground shrink-0">
+                  {instance.currentTask.status}
                 </span>
-                <div className="flex items-center gap-1.5">
-                  {instance.currentTask.status === 'running' && (
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                      onClick={(e) => { e.stopPropagation(); cancelTask(instance.currentTask!.id); }}
-                      title="Cancel task"
-                    >
-                      <XCircle className="h-3 w-3" />
-                      Cancel
-                    </button>
-                  )}
-                  <Badge
-                    variant={
-                      instance.currentTask.status === 'running'
-                        ? 'default'
-                        : instance.currentTask.status === 'completed'
-                        ? 'secondary'
-                        : 'destructive'
-                    }
-                    className="text-[10px] uppercase tracking-wider font-semibold"
-                  >
-                    {instance.currentTask.status}
-                  </Badge>
-                </div>
+                <span className="text-[11px] text-foreground/80 font-mono truncate">
+                  {instance.currentTask.content}
+                </span>
               </div>
-              <p className="text-xs text-foreground font-medium border-l-2 border-primary/40 pl-2.5 truncate" title={instance.currentTask.content}>
-                {instance.currentTask.content}
-              </p>
-              {instance.currentTask.summary && (
-                <p className="text-xs text-muted-foreground line-clamp-2 pl-3 border-l-2 border-transparent">
-                  {instance.currentTask.summary}
-                </p>
-              )}
-            </div>
-          )}
-
-          {taskStream && (
-            <div className="mt-3 rounded-lg bg-[#0d1117] border border-border/40 text-emerald-400 p-3 font-mono text-[11px] leading-relaxed max-h-36 overflow-y-auto shadow-inner">
-              <pre className="whitespace-pre-wrap break-words">{taskStream.slice(-500)}</pre>
-            </div>
-          )}
-        </CardContent>
+            )}
+            {!instance.currentTask && instance.description && (
+              <p className="text-[11px] text-muted-foreground truncate">{instance.description}</p>
+            )}
+          </div>
+        )}
 
         {/* Drag overlay */}
         {dragOver && instance.sandboxId && (

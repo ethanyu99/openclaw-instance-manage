@@ -11,6 +11,7 @@ interface StatusBarProps {
   instances: InstancePublic[];
   connected: boolean;
   onHistoryClick: () => void;
+  onRunningClick?: () => void;
   notifSupported?: boolean;
   notifEnabled?: boolean;
   onToggleNotif?: () => void;
@@ -91,7 +92,7 @@ function UserBadge() {
   );
 }
 
-export function StatusBar({ stats, instances, connected, onHistoryClick, notifSupported, notifEnabled, onToggleNotif }: StatusBarProps) {
+export function StatusBar({ stats, instances, connected, onHistoryClick, onRunningClick, notifSupported, notifEnabled, onToggleNotif }: StatusBarProps) {
   const [expanded, setExpanded] = useState(false);
 
   const busyInstances = useMemo(
@@ -119,7 +120,7 @@ export function StatusBar({ stats, instances, connected, onHistoryClick, notifSu
               <button
                 type="button"
                 className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                onClick={() => setExpanded(prev => !prev)}
+                onClick={() => onRunningClick ? onRunningClick() : setExpanded(prev => !prev)}
               >
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                 Running: <span className="text-foreground font-bold">{stats.busy}</span>
