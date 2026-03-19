@@ -110,13 +110,14 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
         onDragLeave={instance.sandboxId ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); } : undefined}
         onDrop={instance.sandboxId ? (e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); if (e.dataTransfer.files.length > 0) { setDroppedFiles(Array.from(e.dataTransfer.files)); setUploadOpen(true); } } : undefined}
       >
-        <CardHeader className="pb-3 border-b border-border/40 bg-muted/20 overflow-hidden">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className={`inline-block w-2.5 h-2.5 rounded-full shadow-sm ${statusColor[instance.status]}`} />
-              <CardTitle className="text-base font-semibold tracking-tight">{instance.name}</CardTitle>
+        <CardHeader className="p-3 pb-2.5 space-y-0 overflow-hidden">
+          {/* Row 1: Name + Badges */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`inline-block w-2 h-2 rounded-full shadow-sm shrink-0 ${statusColor[instance.status]}`} />
+              <CardTitle className="text-sm font-semibold tracking-tight truncate">{instance.name}</CardTitle>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               {instance.role && (
                 <Badge
                   variant="outline"
@@ -138,136 +139,97 @@ export function InstanceCard({ instance, onRefresh }: InstanceCardProps) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" onClick={handleHealth} title="Refresh">
-              <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 hover:bg-muted"
-              onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}
-              title="Share"
-            >
-              <Share2 className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-            {instance.sandboxId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 hover:bg-muted"
-                onClick={(e) => { e.stopPropagation(); setFilesOpen(true); }}
-                title="Files"
-              >
-                <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+
+          {/* Row 2: Toolbar + Open Web UI */}
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-0.5 flex-wrap">
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={handleHealth} title="Refresh">
+                <RefreshCw className="h-3 w-3 text-muted-foreground" />
               </Button>
-            )}
-            {instance.sandboxId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 hover:bg-muted"
-                onClick={(e) => { e.stopPropagation(); setUploadOpen(true); }}
-                title="Upload"
-              >
-                <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setShareOpen(true); }} title="Share">
+                <Share2 className="h-3 w-3 text-muted-foreground" />
               </Button>
-            )}
-            {instance.sandboxId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 hover:bg-muted"
-                onClick={(e) => { e.stopPropagation(); setTerminalOpen(true); }}
-                title="Terminal"
-              >
-                <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+              {instance.sandboxId && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setFilesOpen(true); }} title="Files">
+                  <FolderOpen className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              )}
+              {instance.sandboxId && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setUploadOpen(true); }} title="Upload">
+                  <Upload className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              )}
+              {instance.sandboxId && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setTerminalOpen(true); }} title="Terminal">
+                  <Terminal className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setConfigOpen(true); }} title="Config">
+                <Settings className="h-3 w-3 text-muted-foreground" />
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 hover:bg-muted"
-              onClick={(e) => { e.stopPropagation(); setConfigOpen(true); }}
-              title="Config"
-            >
-              <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 hover:bg-muted"
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditName(instance.name);
-                setEditDesc(instance.description || '');
-                setError('');
-                setEditOpen(true);
-              }}
-              title="Edit"
-            >
-              <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive text-muted-foreground" onClick={handleDelete} disabled={deleting} title="Delete">
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <div className="flex flex-col gap-1.5 mt-2.5 min-w-0">
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" onClick={(e) => { e.stopPropagation(); setEditName(instance.name); setEditDesc(instance.description || ''); setError(''); setEditOpen(true); }} title="Edit">
+                <Edit2 className="h-3 w-3 text-muted-foreground" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive text-muted-foreground" onClick={handleDelete} disabled={deleting} title="Delete">
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
             {instance.endpoint && instance.token && (
               <a
                 href={`${instance.endpoint.replace(/^ws/, 'http')}#token=${instance.token}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-primary hover:text-primary/80 bg-primary/5 hover:bg-primary/10 dark:bg-primary/10 dark:hover:bg-primary/15 border border-primary/20 dark:border-primary/15 transition-colors w-fit"
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary underline underline-offset-2 decoration-muted-foreground/30 hover:decoration-primary transition-colors shrink-0"
                 onClick={(e) => e.stopPropagation()}
               >
                 <ExternalLink className="h-3 w-3" />
-                Open Web UI
+                Web UI
               </a>
             )}
-            {instance.currentTask?.sessionKey && (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-violet-50/50 dark:bg-violet-950/20 border border-violet-200/50 dark:border-violet-800/30 min-w-0 overflow-hidden">
-                <MessageSquare className="h-3 w-3 text-violet-500 shrink-0" />
-                <span className="text-[11px] text-violet-700 dark:text-violet-400 truncate">
-                  {instance.currentTask.content?.slice(0, 60) || instance.currentTask.sessionKey.slice(0, 20)}
-                </span>
-              </div>
-            )}
-            {!instance.currentTask && activeSession && (
-              <div className="flex items-center gap-1.5 mt-0.5 px-2 py-1.5 rounded-md bg-muted/30 border border-border/30 min-w-0 overflow-hidden">
-                <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-[11px] text-muted-foreground truncate">
-                  Session: <span className="font-medium text-foreground/70">{activeSession.topic || 'Active session'}</span>
-                </span>
-              </div>
-            )}
           </div>
+
+          {/* Row 3: Status info */}
+          {(instance.currentTask || activeSession || instance.description) && (
+            <div className="flex flex-col gap-1.5 pt-1.5 border-t border-border/30 dark:border-border/15 min-w-0">
+              {instance.currentTask?.sessionKey && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-violet-50/50 dark:bg-violet-950/20 border border-violet-200/50 dark:border-violet-800/30 min-w-0 overflow-hidden">
+                  <MessageSquare className="h-3 w-3 text-violet-500 shrink-0" />
+                  <span className="text-[11px] text-violet-700 dark:text-violet-400 truncate">
+                    {instance.currentTask.content?.slice(0, 60) || instance.currentTask.sessionKey.slice(0, 20)}
+                  </span>
+                </div>
+              )}
+              {!instance.currentTask && activeSession && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/30 border border-border/30 min-w-0 overflow-hidden">
+                  <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="text-[11px] text-muted-foreground truncate">
+                    Session: <span className="font-medium text-foreground/70">{activeSession.topic || 'Active session'}</span>
+                  </span>
+                </div>
+              )}
+              {instance.currentTask && (
+                <div
+                  className="flex items-center gap-2 px-2 py-1 rounded bg-muted/30 dark:bg-muted/10 border border-border/30 dark:border-border/15 cursor-pointer hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors"
+                  onClick={handleTaskClick}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    instance.currentTask.status === 'running' ? 'bg-amber-500 animate-pulse' :
+                    instance.currentTask.status === 'completed' ? 'bg-emerald-500' : 'bg-red-500'
+                  }`} />
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground shrink-0">
+                    {instance.currentTask.status}
+                  </span>
+                  <span className="text-[11px] text-foreground/80 font-mono truncate">
+                    {instance.currentTask.content}
+                  </span>
+                </div>
+              )}
+              {!instance.currentTask && !activeSession && instance.description && (
+                <p className="text-[11px] text-muted-foreground truncate">{instance.description}</p>
+              )}
+            </div>
+          )}
         </CardHeader>
-        {/* ── Compact footer ── */}
-        {(instance.currentTask || instance.description) && (
-          <div className="px-4 pb-3 pt-1">
-            {instance.currentTask && (
-              <div
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/30 dark:bg-muted/10 border border-border/30 dark:border-border/15 cursor-pointer hover:bg-muted/50 dark:hover:bg-muted/20 transition-colors"
-                onClick={handleTaskClick}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  instance.currentTask.status === 'running' ? 'bg-amber-500 animate-pulse' :
-                  instance.currentTask.status === 'completed' ? 'bg-emerald-500' : 'bg-red-500'
-                }`} />
-                <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground shrink-0">
-                  {instance.currentTask.status}
-                </span>
-                <span className="text-[11px] text-foreground/80 font-mono truncate">
-                  {instance.currentTask.content}
-                </span>
-              </div>
-            )}
-            {!instance.currentTask && instance.description && (
-              <p className="text-[11px] text-muted-foreground truncate">{instance.description}</p>
-            )}
-          </div>
-        )}
 
         {/* Drag overlay */}
         {dragOver && instance.sandboxId && (

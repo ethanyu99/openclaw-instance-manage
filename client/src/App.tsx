@@ -328,11 +328,11 @@ function MainApp() {
                           <div className="text-primary font-semibold mb-1">01 <span className="text-foreground">Define</span></div>
                           <div className="text-muted-foreground leading-snug">Create a team with roles: PM, Dev, QA</div>
                         </div>
-                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left opacity-60">
+                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left">
                           <div className="text-primary font-semibold mb-1">02 <span className="text-foreground">Bind</span></div>
                           <div className="text-muted-foreground leading-snug">Assign instances to each role</div>
                         </div>
-                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left opacity-60">
+                        <div className="bg-card border border-border/60 rounded-lg px-3 py-3 text-left">
                           <div className="text-primary font-semibold mb-1">03 <span className="text-foreground">Execute</span></div>
                           <div className="text-muted-foreground leading-snug">Dispatch goals, agents collaborate automatically</div>
                         </div>

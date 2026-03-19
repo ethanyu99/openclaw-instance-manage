@@ -62,7 +62,7 @@ function StreamBlock({ instance, stream }: { instance: InstancePublic; stream?: 
         className="px-3 py-2 bg-[#0d1117] dark:bg-[#010409] text-emerald-400 font-mono text-[11px] leading-[1.6] max-h-48 min-h-[80px] overflow-y-auto whitespace-pre-wrap break-words"
       >
         {stream ? stream.slice(-2000) : (
-          <span className="text-muted-foreground/40 flex items-center gap-1.5">
+          <span className="text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
             <Loader2 className="h-3 w-3 animate-spin" />
             Waiting for output...
           </span>
@@ -81,7 +81,9 @@ export function RunningTasksDrawer({ open, onOpenChange, instances, taskStreams 
         <SheetHeader className="px-4 py-3 border-b border-border/40 dark:border-border/20 shrink-0">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-sm font-semibold flex items-center gap-2">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+              {busyInstances.length > 0 && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+              )}
               Running Tasks
               <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 dark:bg-muted/30 px-1.5 py-0.5 rounded">
                 {busyInstances.length}
