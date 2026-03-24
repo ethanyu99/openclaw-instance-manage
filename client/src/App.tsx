@@ -12,7 +12,7 @@ import { ExecutionPanel } from '@/components/ExecutionPanel';
 import { ExecutionReportDialog } from '@/components/ExecutionReportDialog';
 import { ShareView } from '@/components/ShareView';
 import { WelcomeGuide } from '@/components/WelcomeGuide';
-import { RunningTasksDrawer } from '@/components/RunningTasksDrawer';
+import { ChatPanel } from '@/components/ChatPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotification } from '@/hooks/useNotification';
 import { useInstanceStore } from '@/stores/instanceStore';
@@ -21,6 +21,7 @@ import { useTeamStore } from '@/stores/teamStore';
 import { useWSStore } from '@/stores/wsStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ExecutionHistory } from '@/hooks/types';
+import type { InstancePublic } from '@shared/types';
 
 type ViewTab = 'instances' | 'teams';
 
@@ -228,12 +229,16 @@ function MainApp() {
 
   // ── Local UI state ──
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>('instances');
   const [selectedAutoExecution, setSelectedAutoExecution] = useState<ExecutionHistory | null>(null);
   const [autoExecDetailOpen, setAutoExecDetailOpen] = useState(false);
+  const [chatTargetIds, setChatTargetIds] = useState<string[]>([]);
 
 
+
+  // Chat panel: active instances being chatted with
+  const chatInstances = chatTargetIds.map(id => instances.find(i => i.id === id)).filter(Boolean) as InstancePublic[];
+  const chatBusy = chatInstances.some(i => i.status === 'busy' && i.currentTask?.status === 'running');
 
   const handleTeamRefresh = () => {
     loadTeams();
@@ -247,7 +252,6 @@ function MainApp() {
         instances={instances}
         connected={connected}
         onHistoryClick={() => setHistoryOpen(true)}
-        onRunningClick={() => setTasksDrawerOpen(true)}
         notifSupported={notifSupported}
         notifEnabled={notifEnabled}
         onToggleNotif={toggleNotif}
@@ -366,7 +370,21 @@ function MainApp() {
         />
       )}
 
-      <TaskInput instances={instances} teams={teams} onDispatch={(...args) => { dispatchTask(...args); setTasksDrawerOpen(true); }} onTeamDispatch={dispatchTeamTask} />
+      {/* Inline chat panel — above TaskInput */}
+      {chatInstances.length > 0 && (
+        <div className="border-t border-border/40 bg-card/80 px-6 py-3">
+          <ChatPanel instances={chatInstances} taskStreams={taskStreams} />
+        </div>
+      )}
+
+      <TaskInput
+        instances={instances}
+        teams={teams}
+        onDispatch={dispatchTask}
+        onTeamDispatch={dispatchTeamTask}
+        onChatStart={(ids) => setChatTargetIds(ids)}
+        disabled={chatBusy}
+      />
 
       <HistoryDrawer
         open={historyOpen}
@@ -382,13 +400,6 @@ function MainApp() {
         execution={selectedAutoExecution}
         open={autoExecDetailOpen}
         onOpenChange={setAutoExecDetailOpen}
-      />
-
-      <RunningTasksDrawer
-        open={tasksDrawerOpen}
-        onOpenChange={setTasksDrawerOpen}
-        instances={instances}
-        taskStreams={taskStreams}
       />
 
       <Toaster

@@ -11,6 +11,8 @@ interface TaskInputProps {
   teams?: TeamPublic[];
   onDispatch: (instanceId: string, content: string, instanceName: string, newSession?: boolean, imageUrls?: string[]) => void;
   onTeamDispatch?: (teamId: string, content: string, newSession?: boolean, config?: Partial<ExecutionConfig>) => void;
+  onChatStart?: (instanceIds: string[]) => void;
+  disabled?: boolean;
   shareMode?: boolean;
 }
 
@@ -44,7 +46,7 @@ function isTeamOption(item: SuggestionItem): item is TeamOption {
   return item.id.startsWith(TEAM_PREFIX);
 }
 
-export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, shareMode = false }: TaskInputProps) {
+export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, onChatStart, disabled = false, shareMode = false }: TaskInputProps) {
   const activeSessions = useInstanceStore(s => s.activeSessions);
   const [value, setValue] = useState('');
   const [targetInstances, setTargetInstances] = useState<InstancePublic[]>([]);
@@ -193,7 +195,7 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
   }, []);
 
   const handleSubmit = async () => {
-    if (uploading) return;
+    if (uploading || disabled) return;
 
     const content = value.trim();
     if (!content && images.length === 0) return;
@@ -224,6 +226,9 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
       }
       setUploading(false);
     }
+
+    // Notify parent about chat targets before dispatching
+    onChatStart?.(targetInstances.map(i => i.id));
 
     for (const inst of targetInstances) {
       onDispatch(inst.id, content, inst.name, pendingNewSession || undefined, imageUrls);
@@ -301,6 +306,7 @@ export function TaskInput({ instances, teams = [], onDispatch, onTeamDispatch, s
   const hasTarget = targetInstances.length > 0 || selectedTeam !== null;
 
   const isSubmitDisabled =
+    disabled ||
     uploading ||
     suggestions.length > 0 ||
     !hasTarget ||
