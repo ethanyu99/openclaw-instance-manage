@@ -24,7 +24,7 @@ function InstanceStream({ instance, stream }: { instance: InstancePublic; stream
   const isFailed = task?.status === 'failed' || task?.status === 'cancelled';
 
   return (
-    <div className="flex flex-col min-w-0 flex-1 border border-border/40 dark:border-border/20 rounded-lg overflow-hidden bg-card">
+    <div className="flex flex-col min-w-0 flex-1 h-full border border-border/40 dark:border-border/20 rounded-lg overflow-hidden bg-card">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 dark:bg-muted/10 border-b border-border/30 dark:border-border/15 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -102,13 +102,11 @@ export function ChatPanel({ instances, taskStreams }: ChatPanelProps) {
   if (instances.length === 0) return null;
 
   return (
-    <div className={`flex gap-2 w-full ${instances.length === 1 ? '' : 'overflow-x-auto'}`}
-      style={{ height: 'clamp(200px, 35vh, 400px)' }}
-    >
+    <div className={`flex gap-2 w-full h-full ${instances.length === 1 ? '' : 'overflow-x-auto'}`}>
       {instances.map(inst => (
         <div
           key={inst.id}
-          className={instances.length === 1 ? 'w-full' : 'min-w-[320px] flex-1'}
+          className={`h-full ${instances.length === 1 ? 'w-full' : 'min-w-[320px] flex-1'}`}
           style={instances.length > 1 ? { maxWidth: `${Math.max(100 / instances.length, 33)}%` } : undefined}
         >
           <InstanceStream
