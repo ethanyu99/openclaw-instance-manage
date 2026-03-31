@@ -1,11 +1,13 @@
-import { useEffect, useRef } from 'react';
-import { XCircle, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { XCircle, Loader2, ChevronDown, ChevronUp, X, MessageSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { InstancePublic } from '@shared/types';
 import { useWSStore } from '@/stores/wsStore';
 
 interface ChatPanelProps {
   instances: InstancePublic[];
   taskStreams: Record<string, string>;
+  onClose?: () => void;
 }
 
 function InstanceStream({ instance, stream }: { instance: InstancePublic; stream?: string }) {
@@ -98,23 +100,96 @@ function InstanceStream({ instance, stream }: { instance: InstancePublic; stream
   );
 }
 
-export function ChatPanel({ instances, taskStreams }: ChatPanelProps) {
+// ── Collapsed summary bar ──
+function CollapsedSummary({ instances }: { instances: InstancePublic[] }) {
+  const runningCount = instances.filter(i => i.currentTask?.status === 'running').length;
+  const doneCount = instances.filter(i => i.currentTask?.status === 'completed').length;
+
+  return (
+    <div className="flex items-center gap-3 text-xs text-muted-foreground font-mono">
+      {instances.map(inst => (
+        <span key={inst.id} className="flex items-center gap-1.5 truncate">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            inst.currentTask?.status === 'running' ? 'bg-amber-500 animate-pulse' :
+            inst.currentTask?.status === 'completed' ? 'bg-emerald-500' : 'bg-zinc-400'
+          }`} />
+          <span className="truncate">{inst.name}</span>
+        </span>
+      ))}
+      <span className="text-border/60 shrink-0">·</span>
+      {runningCount > 0 && <span className="text-amber-600 dark:text-amber-400 shrink-0">{runningCount} running</span>}
+      {doneCount > 0 && <span className="text-emerald-600 dark:text-emerald-400 shrink-0">{doneCount} done</span>}
+    </div>
+  );
+}
+
+export function ChatPanel({ instances, taskStreams, onClose }: ChatPanelProps) {
+  const [expanded, setExpanded] = useState(true);
+  const allDone = instances.every(i => !i.currentTask || i.currentTask.status !== 'running');
+
   if (instances.length === 0) return null;
 
   return (
-    <div className={`flex gap-2 w-full h-full ${instances.length === 1 ? '' : 'overflow-x-auto'}`}>
-      {instances.map(inst => (
-        <div
-          key={inst.id}
-          className={`h-full ${instances.length === 1 ? 'w-full' : 'min-w-[320px] flex-1'}`}
-          style={instances.length > 1 ? { maxWidth: `${Math.max(100 / instances.length, 33)}%` } : undefined}
-        >
-          <InstanceStream
-            instance={inst}
-            stream={taskStreams[inst.id]}
-          />
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-1 py-1 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <MessageSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs font-semibold text-foreground">
+            Chat Output
+          </span>
+          <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 dark:bg-muted/30 px-1.5 py-0.5 rounded">
+            {instances.length}
+          </span>
         </div>
-      ))}
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded(prev => !prev)}
+            title={expanded ? 'Collapse' : 'Expand'}
+          >
+            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+          </Button>
+          {allDone && onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              onClick={onClose}
+              title="Close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Collapsed: summary bar */}
+      {!expanded && (
+        <div className="px-1 pb-1">
+          <CollapsedSummary instances={instances} />
+        </div>
+      )}
+
+      {/* Expanded: full stream panels */}
+      {expanded && (
+        <div className={`flex gap-2 w-full flex-1 min-h-0 ${instances.length === 1 ? '' : 'overflow-x-auto'}`}>
+          {instances.map(inst => (
+            <div
+              key={inst.id}
+              className={`h-full ${instances.length === 1 ? 'w-full' : 'min-w-[320px] flex-1'}`}
+              style={instances.length > 1 ? { maxWidth: `${Math.max(100 / instances.length, 33)}%` } : undefined}
+            >
+              <InstanceStream
+                instance={inst}
+                stream={taskStreams[inst.id]}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
